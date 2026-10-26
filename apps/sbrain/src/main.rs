@@ -1,6 +1,7 @@
 mod schedule;
 mod status;
 mod sweep;
+mod uninstall;
 
 use std::path::PathBuf;
 
@@ -40,6 +41,13 @@ enum Command {
     Status {
         #[arg(long)]
         json: bool,
+    },
+    /// Removes what sbrain set up on this computer, except the vault: connections, the scheduled sweep,
+    /// its settings and caches. Lists what it would do; does it only with `--yes`. Then says how to remove
+    /// the program itself.
+    Uninstall {
+        #[arg(long)]
+        yes: bool,
     },
     /// Coding agents on this machine and whether sbrain is connected to them.
     Clients,
@@ -365,13 +373,14 @@ struct SetupInfo<'a> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     // Hooks stay quick and quiet; connect and disconnect handle the connection themselves; status shows
-    // things as they are, so it repairs nothing.
+    // things as they are and uninstall removes the connection, so neither repairs it.
     if !matches!(
         cli.command,
         Command::Hook { .. }
             | Command::Connect { .. }
             | Command::Disconnect { .. }
             | Command::Status { .. }
+            | Command::Uninstall { .. }
     ) {
         refresh_connections();
         retry_vault_commits(cli.vault.as_deref());
@@ -510,6 +519,7 @@ fn main() -> Result<()> {
                 Ok(())
             }
         }
+        Command::Uninstall { yes } => uninstall::run(yes),
         Command::Clients => {
             let found: Vec<_> = sbrain_clients::all()
                 .iter()

@@ -213,6 +213,7 @@ The sweep's settings in the vault are under `[sweep]` in `.sbrain/vault.toml`.
 | `sbrain session write --session <id>` | Write a session's handoff card |
 | `sbrain item verify <id> [--repo <folder>] [--timeout <s>]` | Run the item's verify command; a pass makes it `verified` |
 | `sbrain overview`, `sbrain items`, `sbrain decisions`, `sbrain sessions`, `sbrain graph` | The vault as JSON |
+| `sbrain uninstall [--yes]` | Remove what sbrain set up on this computer except the vault; then remove the program |
 | `sbrain status [--json]` | Everything sbrain does on this computer and what needs you; changes nothing |
 | `sbrain doctor [--quick] [--json]` | Check the vault; changes nothing |
 | `sbrain sweep [--due] [--dry-run] [--json]` | Distill sessions that ended without a handoff card |

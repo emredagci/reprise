@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs as `dev` inside the systemd container (`.github/linux-check.sh`): connects a stand-in Claude Code, has
 # systemd schedule the sweep, reports a session as ended and checks that the scheduled job distills it into
-# the vault, then removes everything again. Fails on the first thing that is not as it should be.
+# the vault, then removes everything again with `sbrain uninstall`. Fails on the first thing that is not as it should be.
 set -euo pipefail
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -62,10 +62,12 @@ has 'scheduled (systemd)' sbrain status || fail "status does not show the schedu
 has 'hooks run /usr/local/bin/sbrain (this sbrain)' sbrain status || fail "status does not show the hooks"
 ok "status shows the schedule and the hooks"
 
-sbrain sweep unschedule > /dev/null
-[ ! -e ~/.config/systemd/user/sbrain-sweep.timer ] || fail "unschedule left the timer"
+has 'unschedule the sweep' sbrain uninstall || fail "uninstall does not list the scheduled sweep"
+sbrain uninstall --yes > /dev/null
+[ ! -e ~/.config/systemd/user/sbrain-sweep.timer ] || fail "uninstall left the timer"
 ! has sbrain-sweep systemctl --user list-timers --all --no-pager || fail "the timer is still loaded"
-sbrain disconnect claude
-! grep -q sbrain ~/.claude/settings.json || fail "disconnect left hooks behind"
-ok "unschedule and disconnect remove what they added"
+! grep -q sbrain ~/.claude/settings.json || fail "uninstall left hooks behind"
+[ ! -e ~/.config/sbrain ] || fail "uninstall left sbrain's settings"
+[ -f ~/vault/.sbrain/vault.toml ] || fail "uninstall touched the vault"
+ok "uninstall removes the timer, the hooks and the settings, and keeps the vault"
 echo "Linux scenario passed."

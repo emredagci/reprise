@@ -36,6 +36,19 @@ Claude Code its hooks. The third distills sessions that ended without a handoff,
 `sbrain status` shows what is set up and what needs you; `sbrain doctor` checks the vault; `sbrain --help`
 lists every command. Details: [docs/guide.md](docs/guide.md).
 
+## Remove
+
+```bash
+sbrain uninstall --yes
+```
+
+```bash
+brew uninstall sbrain
+```
+
+The first removes the connections, the scheduled sweep and sbrain's settings; the vault stays. Without
+`--yes` it only lists what it would remove.
+
 ## Build
 
 ```bash
