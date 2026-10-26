@@ -11,23 +11,23 @@ class Sbrain < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-aarch64-apple-darwin.tar.gz"
-      sha256 "@SHA256_aarch64-apple-darwin@"
+      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-macos-arm64.tar.gz"
+      sha256 "@SHA256_macos-arm64@"
     end
     on_intel do
-      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-x86_64-apple-darwin.tar.gz"
-      sha256 "@SHA256_x86_64-apple-darwin@"
+      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-macos-x86_64.tar.gz"
+      sha256 "@SHA256_macos-x86_64@"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "@SHA256_aarch64-unknown-linux-gnu@"
+      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-linux-arm64.tar.gz"
+      sha256 "@SHA256_linux-arm64@"
     end
     on_intel do
-      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "@SHA256_x86_64-unknown-linux-gnu@"
+      url "https://github.com/emredagci/sbrain/releases/download/@VERSION@/sbrain-@VERSION@-linux-x86_64.tar.gz"
+      sha256 "@SHA256_linux-x86_64@"
     end
   end
 

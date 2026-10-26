@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the sbrain CLI for TARGET and packs it as dist/sbrain-<version>-<TARGET>.tar.gz: one folder holding
+# Builds the sbrain CLI for TARGET and packs it as dist/sbrain-<version>-<platform>.tar.gz (macos-arm64,
+# macos-x86_64, linux-arm64 or linux-x86_64): one folder holding
 # `sbrain`, LICENSE, NOTICE and README.md. The release workflow runs it once per target; it also runs by hand.
 #
 #   TARGET=aarch64-apple-darwin ./.github/package.sh
@@ -42,7 +43,14 @@ if [[ "$TARGET" == *-apple-darwin && -n "${SIGN_IDENTITY:-}" ]]; then
   fi
 fi
 
-name="sbrain-$version-$TARGET"
+case "$TARGET" in
+  aarch64-apple-darwin) platform=macos-arm64 ;;
+  x86_64-apple-darwin) platform=macos-x86_64 ;;
+  aarch64-unknown-linux-gnu) platform=linux-arm64 ;;
+  x86_64-unknown-linux-gnu) platform=linux-x86_64 ;;
+  *) echo "no platform name for $TARGET" >&2; exit 1 ;;
+esac
+name="sbrain-$version-$platform"
 rm -rf "dist/$name" "dist/$name.tar.gz"
 mkdir -p "dist/$name"
 cp "$bin" LICENSE NOTICE README.md "dist/$name/"

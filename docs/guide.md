@@ -6,12 +6,12 @@ Everything about sbrain that the README leaves out. The vault's own format is in
 ## Install from an archive
 
 Download the archive for your system from the
-[latest release](https://github.com/emredagci/sbrain/releases/latest) (`sbrain-<version>-<target>.tar.gz`; the
+[latest release](https://github.com/emredagci/sbrain/releases/latest) (`sbrain-<version>-<platform>.tar.gz`; the
 Mac binaries are signed and notarized), check it against `SHA256SUMS`, and put `sbrain` in a folder on your
 PATH:
 
 ```bash
-tar -xzf sbrain-*-aarch64-apple-darwin.tar.gz
+tar -xzf sbrain-*-macos-arm64.tar.gz
 ```
 
 ```bash
@@ -290,7 +290,8 @@ cargo xtask reset
 
 A version tag publishes a release: `.github/workflows/release.yml` builds the CLI for macOS (Apple Silicon
 and Intel) and Linux (x86_64 and arm64, on Ubuntu 22.04 so older glibc works) with
-`.github/package.sh`, one `sbrain-<version>-<target>.tar.gz` each. The Mac binaries are signed with the
+`.github/package.sh`, one `sbrain-<version>-<platform>.tar.gz` each (`macos-arm64`, `macos-x86_64`, `linux-arm64`,
+`linux-x86_64`). The Mac binaries are signed with the
 Developer ID (hardened runtime) and notarized by Apple; a lone binary cannot be stapled, so Gatekeeper
 checks the ticket online. The release gets the archives, `SHA256SUMS` and `sbrain.rb`, the Homebrew formula
 for them, rendered from `packaging/homebrew/sbrain.rb.in`. With the `HOMEBREW_TAP_TOKEN` secret (a token that

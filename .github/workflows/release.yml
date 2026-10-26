@@ -3,7 +3,7 @@
 #   git tag -a 0.2.0 -m "<release notes, Markdown>" && git push origin 0.2.0
 #
 # The tag is the version in Cargo.toml, without a prefix; its message becomes the release notes. The release carries
-# one archive per platform (sbrain-<version>-<target>.tar.gz), SHA256SUMS and sbrain.rb, the Homebrew formula for
+# one archive per platform (sbrain-<version>-<platform>.tar.gz, such as macos-arm64), SHA256SUMS and sbrain.rb, the Homebrew formula for
 # those archives. The Mac binaries are signed with the Developer ID and notarized by Apple. With the
 # HOMEBREW_TAP_TOKEN secret set, the formula is also committed to emredagci/homebrew-tap.
 #
@@ -64,14 +64,18 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
+            platform: macos-arm64
             os: macos-latest
           # Built on the Apple Silicon runner too.
           - target: x86_64-apple-darwin
+            platform: macos-x86_64
             os: macos-latest
           # 22.04 rather than the newest Ubuntu, so the binaries run where glibc is older.
           - target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
             os: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
+            platform: linux-arm64
             os: ubuntu-22.04-arm
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -126,14 +130,14 @@ jobs:
         if: matrix.target != 'x86_64-apple-darwin' || runner.arch == 'X64'
         run: |
           dir="$(mktemp -d)"
-          tar -C "$dir" -xzf dist/sbrain-*-${{ matrix.target }}.tar.gz
+          tar -C "$dir" -xzf dist/sbrain-*-${{ matrix.platform }}.tar.gz
           "$dir"/sbrain-*/sbrain --version
 
       - name: Signature
         if: runner.os == 'macOS'
         run: |
           dir="$(mktemp -d)"
-          tar -C "$dir" -xzf dist/sbrain-*-${{ matrix.target }}.tar.gz
+          tar -C "$dir" -xzf dist/sbrain-*-${{ matrix.platform }}.tar.gz
           codesign --verify --strict --verbose=2 "$dir"/sbrain-*/sbrain
           codesign --display --verbose=2 "$dir"/sbrain-*/sbrain 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
 
