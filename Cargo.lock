@@ -509,7 +509,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "sbrain"
-version = "0.1.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -524,7 +524,7 @@ dependencies = [
 
 [[package]]
 name = "sbrain-clients"
-version = "0.1.1"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -537,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "sbrain-core"
-version = "0.1.1"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "dirs",
@@ -871,7 +871,7 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "xtask"
-version = "0.1.1"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
