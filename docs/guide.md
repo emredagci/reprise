@@ -298,15 +298,15 @@ can push to `emredagci/homebrew-tap`), the formula is committed to the tap as `F
 
 The jobs that sign and publish run in the `release` environment. Keep the signing, notarization and tap
 secrets there rather than at repository level, and give the environment required reviewers and a
-deployment rule for `v*` tags (Settings › Environments): then no push or tag alone can sign a build. The
+deployment rule for version tags, `[0-9]*` (Settings › Environments): then no push or tag alone can sign a build. The
 workflows pin every action to a commit and do not keep the checkout's token.
 
 ```bash
-git tag -a v0.2.0 -m "What changed, as a Markdown list"
+git tag -a 0.2.0 -m "What changed, as a Markdown list"
 ```
 
 ```bash
-git push origin v0.2.0
+git push origin 0.2.0
 ```
 
 Running the workflow by hand without a tag builds, signs and notarizes the branch and keeps the archives

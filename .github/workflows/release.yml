@@ -1,8 +1,8 @@
 # Builds the sbrain CLI for each platform and publishes a release when a version tag is pushed.
 #
-#   git tag -a v0.2.0 -m "<release notes, Markdown>" && git push origin v0.2.0
+#   git tag -a 0.2.0 -m "<release notes, Markdown>" && git push origin 0.2.0
 #
-# The tag must match the version in Cargo.toml; its message becomes the release notes. The release carries
+# The tag is the version in Cargo.toml, without a prefix; its message becomes the release notes. The release carries
 # one archive per platform (sbrain-<version>-<target>.tar.gz), SHA256SUMS and sbrain.rb, the Homebrew formula for
 # those archives. The Mac binaries are signed with the Developer ID and notarized by Apple. With the
 # HOMEBREW_TAP_TOKEN secret set, the formula is also committed to emredagci/homebrew-tap.
@@ -13,11 +13,11 @@ name: release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["[0-9]*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "An existing tag to publish, e.g. v0.2.0. Empty: build the branch, publish nothing."
+        description: "An existing tag to publish, e.g. 0.2.0. Empty: build the branch, publish nothing."
         required: false
         default: ""
 
@@ -45,7 +45,7 @@ jobs:
         run: |
           version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
           if [ -n "$TAG" ]; then
-            [ "$TAG" = "v$version" ] || { echo "Cargo.toml is $version, the tag is $TAG"; exit 1; }
+            [ "$TAG" = "$version" ] || { echo "Cargo.toml is $version, the tag is $TAG"; exit 1; }
             echo "ref=$TAG" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
           else
@@ -58,7 +58,7 @@ jobs:
   build:
     needs: meta
     # The signing and notarization secrets live in this environment: give it required reviewers and a
-    # deployment rule for `v*` tags in the repository's settings, so no push alone can sign a build.
+    # deployment rule for version tags (`[0-9]*`) in the repository's settings, so no push alone can sign a build.
     environment: release
     strategy:
       matrix:
