@@ -56,9 +56,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build:
+    name: build (${{ matrix.platform }})
     needs: meta
-    # The signing and notarization secrets live in this environment: give it required reviewers and a
-    # deployment rule for version tags (`[0-9]*`) in the repository's settings, so no push alone can sign a build.
+    # The signing and notarization secrets live in this environment, whose deployment rule admits only
+    # version tags (`[0-9]*`), so no branch push can sign a build.
     environment: release
     strategy:
       matrix:
