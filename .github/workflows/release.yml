@@ -1,0 +1,208 @@
+# Builds the sbrain CLI for each platform and publishes a release when a version tag is pushed.
+#
+#   git tag -a v0.2.0 -m "<release notes, Markdown>" && git push origin v0.2.0
+#
+# The tag must match the version in Cargo.toml; its message becomes the release notes. The release carries
+# one archive per platform (sbrain-<version>-<target>.tar.gz), SHA256SUMS and sbrain.rb, the Homebrew formula for
+# those archives. The Mac binaries are signed with the Developer ID and notarized by Apple. With the
+# HOMEBREW_TAP_TOKEN secret set, the formula is also committed to emredagci/homebrew-tap.
+#
+# Run by hand without a tag, it builds, signs and notarizes the checked-out branch and keeps the archives
+# as the run's artifacts, publishing nothing: a rehearsal of a release.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag to publish, e.g. v0.2.0. Empty: build the branch, publish nothing."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.meta.outputs.ref }}
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Version, and whether to publish
+        id: meta
+        env:
+          TAG: ${{ github.event.inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ -n "$TAG" ]; then
+            [ "$TAG" = "v$version" ] || { echo "Cargo.toml is $version, the tag is $TAG"; exit 1; }
+            echo "ref=$TAG" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    # The signing and notarization secrets live in this environment: give it required reviewers and a
+    # deployment rule for `v*` tags in the repository's settings, so no push alone can sign a build.
+    environment: release
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          # Built on the Apple Silicon runner too.
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          # 22.04 rather than the newest Ubuntu, so the binaries run where glibc is older.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.meta.outputs.ref }}
+
+      - name: Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: ${{ matrix.target }}
+
+      # A keychain of its own for the Developer ID, and the App Store Connect key for notarization.
+      - name: Signing and notarization keys
+        if: runner.os == 'macOS'
+        env:
+          P12: ${{ secrets.MACOS_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_DEVELOPER_ID_IDENTITY }}
+          P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          keychain="$RUNNER_TEMP/sbrain-signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          printf '%s' "$P8" > "$RUNNER_TEMP/notary.p8"
+          {
+            echo "SIGN_IDENTITY=$IDENTITY"
+            echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8"
+            echo "NOTARY_KEY_ID=$KEY_ID"
+            echo "NOTARY_ISSUER=$ISSUER"
+          } >> "$GITHUB_ENV"
+
+      - name: Build and pack
+        env:
+          TARGET: ${{ matrix.target }}
+        run: ./.github/package.sh
+
+      - name: The binary runs
+        if: matrix.target != 'x86_64-apple-darwin' || runner.arch == 'X64'
+        run: |
+          dir="$(mktemp -d)"
+          tar -C "$dir" -xzf dist/sbrain-*-${{ matrix.target }}.tar.gz
+          "$dir"/sbrain-*/sbrain --version
+
+      - name: Signature
+        if: runner.os == 'macOS'
+        run: |
+          dir="$(mktemp -d)"
+          tar -C "$dir" -xzf dist/sbrain-*-${{ matrix.target }}.tar.gz
+          codesign --verify --strict --verbose=2 "$dir"/sbrain-*/sbrain
+          codesign --display --verbose=2 "$dir"/sbrain-*/sbrain 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbrain-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+      - name: Remove the keys
+        if: always() && runner.os == 'macOS'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/sbrain-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/notary.p8"
+
+  publish:
+    needs: [meta, build]
+    if: needs.meta.outputs.publish == 'true'
+    environment: release
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.meta.outputs.tag }}
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.meta.outputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sbrain-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums and formula
+        run: |
+          (cd dist && sha256sum sbrain-*.tar.gz > SHA256SUMS)
+          cat dist/SHA256SUMS
+          ./.github/render-formula.sh "$VERSION" dist/SHA256SUMS > dist/sbrain.rb
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -l --format='%(contents)' "$TAG" > "$RUNNER_TEMP/notes.md"
+          test -s "$RUNNER_TEMP/notes.md" || { echo "the tag has no message; use git tag -a"; exit 1; }
+          gh release create "$TAG" dist/*.tar.gz dist/SHA256SUMS dist/sbrain.rb \
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --verify-tag
+
+      - name: Update the Homebrew tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; sbrain.rb is on the release for the tap by hand."
+            exit 0
+          fi
+          tap="$RUNNER_TEMP/tap"
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/emredagci/homebrew-tap.git" "$tap"
+          mkdir -p "$tap/Formula"
+          cp dist/sbrain.rb "$tap/Formula/sbrain.rb"
+          cd "$tap"
+          git add Formula/sbrain.rb
+          if git diff --cached --quiet; then
+            echo "The tap already has sbrain $VERSION."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "sbrain $VERSION"
+          git push origin HEAD

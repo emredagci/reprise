@@ -1,0 +1,99 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["card", "new_items", "item_updates", "new_decisions", "rules", "state"],
+  "properties": {
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["done", "decisions", "open", "next_step", "uncertain"],
+      "properties": {
+        "done": { "type": "array", "items": { "type": "string" } },
+        "decisions": { "type": "array", "items": { "type": "string" } },
+        "open": { "type": "array", "items": { "type": "string" } },
+        "next_step": { "type": "string" },
+        "uncertain": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "new_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "type", "status", "problem", "solution", "files", "aliases", "commit", "verify"],
+        "properties": {
+          "title": { "type": "string" },
+          "type": { "type": "string", "enum": ["bug", "feature", "idea", "debt"] },
+          "status": { "type": "string", "enum": ["inbox", "planned", "doing", "done-unverified"] },
+          "problem": { "type": "string" },
+          "solution": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "aliases": { "type": "array", "items": { "type": "string" } },
+          "commit": { "type": "string" },
+          "verify": { "type": "string" }
+        }
+      }
+    },
+    "item_updates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "commit", "verify", "files", "note"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["", "inbox", "planned", "doing", "done-unverified", "dropped"] },
+          "commit": { "type": "string" },
+          "verify": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "new_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "context", "decision", "why", "alternatives", "related"],
+        "properties": {
+          "title": { "type": "string" },
+          "context": { "type": "string" },
+          "decision": { "type": "string" },
+          "why": { "type": "string" },
+          "alternatives": { "type": "string" },
+          "related": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scope", "rule"],
+        "properties": {
+          "scope": { "type": "string", "enum": ["project", "general"] },
+          "rule": { "type": "string" }
+        }
+      }
+    },
+    "state": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["what", "architecture", "working", "not_working", "run_and_test"],
+          "properties": {
+            "what": { "type": "string" },
+            "architecture": { "type": "string" },
+            "working": { "type": "string" },
+            "not_working": { "type": "string" },
+            "run_and_test": { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}

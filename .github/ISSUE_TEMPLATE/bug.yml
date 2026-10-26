@@ -1,0 +1,31 @@
+name: Report a problem
+description: Something in sbrain (the CLI, a hook or the scheduled sweep) does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. …
+        2. …
+  - type: textarea
+    id: details
+    attributes:
+      label: Version and system
+      description: The output of `sbrain --version` and `sbrain clients`, and your OS.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Error messages, a screenshot, or the output of `sbrain doctor`. Leave out anything from your vault you do not want public.

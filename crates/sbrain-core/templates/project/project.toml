@@ -1,0 +1,4 @@
+# Id prefix: items are {{prefix}}-0001, decisions {{prefix}}-D-0001.
+prefix = "{{prefix}}"
+# Normalized git remotes of this project's repositories (host/owner/name).
+repos = [{{repos}}]

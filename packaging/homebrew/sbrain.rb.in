@@ -1,0 +1,55 @@
+# typed: strict
+# frozen_string_literal: true
+
+# Written to emredagci/homebrew-tap by sbrain's release workflow from packaging/homebrew/sbrain.rb.in in
+# emredagci/sbrain; edit that file. Installed with `brew install emredagci/tap/sbrain`.
+class Sbrain < Formula
+  desc "Second brain for your coding agent"
+  homepage "https://github.com/emredagci/sbrain"
+  version "@VERSION@"
+  license "Apache-2.0"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/emredagci/sbrain/releases/download/v@VERSION@/sbrain-@VERSION@-aarch64-apple-darwin.tar.gz"
+      sha256 "@SHA256_aarch64-apple-darwin@"
+    end
+    on_intel do
+      url "https://github.com/emredagci/sbrain/releases/download/v@VERSION@/sbrain-@VERSION@-x86_64-apple-darwin.tar.gz"
+      sha256 "@SHA256_x86_64-apple-darwin@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/emredagci/sbrain/releases/download/v@VERSION@/sbrain-@VERSION@-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "@SHA256_aarch64-unknown-linux-gnu@"
+    end
+    on_intel do
+      url "https://github.com/emredagci/sbrain/releases/download/v@VERSION@/sbrain-@VERSION@-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "@SHA256_x86_64-unknown-linux-gnu@"
+    end
+  end
+
+  def install
+    bin.install "sbrain"
+  end
+
+  def caveats
+    <<~EOS
+      Choose the vault and the folders sbrain may read, then connect Claude Code:
+        sbrain setup set --vault <folder> --auto
+        sbrain connect claude --yes
+      To have this computer distill finished sessions by itself:
+        sbrain sweep schedule
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/sbrain --version")
+    ENV["SBRAIN_SETTINGS"] = (testpath/"settings.json").to_s
+    (testpath/"vault").mkpath
+    system bin/"sbrain", "setup", "set", "--vault", testpath/"vault", "--auto"
+    assert_path_exists testpath/"vault/.sbrain/vault.toml"
+  end
+end
