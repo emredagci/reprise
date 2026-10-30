@@ -94,7 +94,7 @@ struct Outcome {
     #[serde(skip_serializing_if = "String::is_empty")]
     reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    applied: Option<distill::Applied>,
+    applied: Option<Box<distill::Applied>>,
     /// The vault commit, when the vault is a git repository and the commit worked.
     #[serde(skip_serializing_if = "Option::is_none")]
     commit: Option<String>,
@@ -164,11 +164,13 @@ impl Reporter {
                 };
                 let detail = match (&o.applied, o.reason.is_empty()) {
                     (Some(a), _) => format!(
-                        " → {} (+{} items, {} updated, +{} decisions{})",
+                        " → {} (+{} items, {} updated, +{} decisions, {} facts, +{} events{})",
                         a.card.display(),
                         a.items_added.len(),
                         a.items_updated.len(),
                         a.decisions_added.len(),
+                        a.facts_set.len(),
+                        a.events_added,
                         if a.left_out.is_empty() {
                             String::new()
                         } else {
@@ -475,6 +477,8 @@ fn run_session(o: &Outcome) -> sweep::RunSession {
         rules_proposed: applied.map_or(0, |a| a.rules_proposed),
         state_filled: applied.is_some_and(|a| a.state_filled),
         left_out: applied.map_or(0, |a| a.left_out.len()),
+        facts_set: applied.map_or(0, |a| a.facts_set.len()),
+        events_added: applied.map_or(0, |a| a.events_added),
     }
 }
 
@@ -609,7 +613,7 @@ impl Run<'_> {
                     &format!("sweep({project}): {short} distilled from the transcript"),
                 );
                 let mut o = Outcome::new(session, "ok", &project, "");
-                o.applied = Some(applied);
+                o.applied = Some(Box::new(applied));
                 o.commit = commit;
                 o
             }

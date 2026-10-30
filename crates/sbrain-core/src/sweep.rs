@@ -74,6 +74,10 @@ pub struct RunSession {
     /// Records the answer had but no quote from the session backed.
     #[serde(default)]
     pub left_out: usize,
+    #[serde(default)]
+    pub facts_set: usize,
+    #[serde(default)]
+    pub events_added: usize,
 }
 
 impl Run {

@@ -25,6 +25,8 @@ const MAX_NEW_ITEMS: usize = 12;
 const MAX_UPDATES: usize = 20;
 const MAX_DECISIONS: usize = 6;
 const MAX_RULES: usize = 6;
+const MAX_FACTS: usize = 12;
+const MAX_EVENTS: usize = 10;
 /// Characters kept of a title, a rule and each `state.md` section.
 const TITLE_LIMIT: usize = 200;
 const RULE_LIMIT: usize = 300;
@@ -62,7 +64,30 @@ pub struct Distilled {
     pub item_updates: Vec<ItemUpdate>,
     pub new_decisions: Vec<NewDecisionOut>,
     pub rules: Vec<RuleOut>,
+    pub facts: Vec<FactOut>,
+    pub events: Vec<EventOut>,
     pub state: Option<StateOut>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FactOut {
+    pub key: String,
+    pub value: String,
+    /// The date as the session said it; empty for the day it was said.
+    pub from: String,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EventOut {
+    pub what: String,
+    pub kind: String,
+    pub status: String,
+    /// The date as the session said it; empty for the day it was said.
+    pub when: String,
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -149,6 +174,9 @@ pub struct Applied {
     pub state_filled: bool,
     /// What the answer had but no quote in the session backed, so was not written.
     pub left_out: Vec<String>,
+    /// Facts given a new value: `key = value`.
+    pub facts_set: Vec<String>,
+    pub events_added: usize,
     /// Every file written or changed, for the vault commit.
     pub files: Vec<PathBuf>,
 }
@@ -162,7 +190,7 @@ impl Distilled {
 }
 
 /// The input for the engine: the session, the project's `state.md`, open items, recent decisions,
-/// the existing card and the digest.
+/// the facts that hold now, the existing card and the digest.
 pub fn input(vault: &Vault, s: &Session) -> String {
     let dir = vault.project_dir(s.project);
     let card = store::find_card(vault, s.project, s.id)
@@ -196,6 +224,12 @@ pub fn input(vault: &Vault, s: &Session) -> String {
         .take(LISTED_DECISIONS)
         .map(|d| format!("- {} {}", d.id, d.title))
         .collect();
+    let facts: Vec<String> = crate::facts::read(vault, Some(s.project))
+        .unwrap_or_default()
+        .iter()
+        .filter(|f| f.to.is_none())
+        .map(|f| format!("- {}: {} (since {})", f.key, f.value, f.from.display()))
+        .collect();
     let list = |lines: Vec<String>| {
         if lines.is_empty() {
             "(none)".to_owned()
@@ -206,7 +240,7 @@ pub fn input(vault: &Vault, s: &Session) -> String {
     format!(
         "# Session to distill\n\nproject: {}\nsession: {}\nworking directory: {}\ntime: {} → {}\nexisting handoff card: {card}\n\n\
          ## state.md\n\n{state}\n\n## Open items of this project\n\n{}\n\n## Recent decisions of this project\n\n{}\n\n\
-         ## Transcript digest\n\n{}\n",
+         ## Facts that hold now\n\n{}\n\n## Transcript digest\n\n{}\n",
         s.project,
         s.id,
         s.cwd,
@@ -214,6 +248,7 @@ pub fn input(vault: &Vault, s: &Session) -> String {
         s.last,
         list(items),
         list(decisions),
+        list(facts),
         s.digest.trim()
     )
 }
@@ -226,6 +261,8 @@ pub fn check(vault: &Vault, project: &str, d: &Distilled) -> Vec<String> {
         ("item updates", d.item_updates.len(), MAX_UPDATES),
         ("new decisions", d.new_decisions.len(), MAX_DECISIONS),
         ("rules", d.rules.len(), MAX_RULES),
+        ("facts", d.facts.len(), MAX_FACTS),
+        ("events", d.events.len(), MAX_EVENTS),
     ] {
         if n > max {
             problems.push(format!("{n} {what}; at most {max}"));
@@ -422,6 +459,81 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
         }
     }
 
+    let session_day = day_of(s.last).unwrap_or(today);
+    for fact in &d.facts {
+        let label = format!("fact \"{}\"", one_line(&fact.key));
+        let quotes = evidence::supported(&fact.evidence, &everything);
+        if quotes.is_empty() {
+            out.left_out.push(label);
+            continue;
+        }
+        let said = said_on(s.digest, &quotes).unwrap_or(session_day);
+        let Some(from) = when_said(&fact.from, said) else {
+            out.left_out.push(format!(
+                "{label}: the date {:?} is not understood",
+                fact.from
+            ));
+            continue;
+        };
+        let source = format!("transcript {session8}");
+        match crate::facts::set(
+            vault,
+            Some(s.project),
+            &fact.key,
+            &fact.value,
+            from,
+            &source,
+            today,
+        ) {
+            Ok((crate::facts::Set::Same, _)) => {}
+            Ok((_, path)) => {
+                out.facts_set.push(format!(
+                    "{} = {}",
+                    one_line(&fact.key),
+                    one_line(&fact.value)
+                ));
+                if !out.files.contains(&path) {
+                    out.files.push(path);
+                }
+            }
+            Err(e) => out.left_out.push(format!("{label}: {e}")),
+        }
+    }
+    for event in &d.events {
+        let label = format!("event \"{}\"", one_line(&event.what));
+        let quotes = evidence::supported(&event.evidence, &everything);
+        if quotes.is_empty() {
+            out.left_out.push(label);
+            continue;
+        }
+        let said = said_on(s.digest, &quotes).unwrap_or(session_day);
+        let Some(when) = when_said(&event.when, said) else {
+            out.left_out.push(format!(
+                "{label}: the date {:?} is not understood",
+                event.when
+            ));
+            continue;
+        };
+        let new = crate::events::Event {
+            when,
+            what: event.what.clone(),
+            kind: event.kind.clone(),
+            status: event.status.clone(),
+            said: said.format("%Y-%m-%d").to_string(),
+            source: format!("transcript {session8}"),
+        };
+        match crate::events::add(vault, s.project, new) {
+            Ok((true, path)) => {
+                out.events_added += 1;
+                if !out.files.contains(&path) {
+                    out.files.push(path);
+                }
+            }
+            Ok((false, _)) => {}
+            Err(e) => out.left_out.push(format!("{label}: {e}")),
+        }
+    }
+
     if let Some(state) = &d.state
         && let Some(path) = fill_state(vault, s.project, state, today)?
     {
@@ -554,6 +666,35 @@ fn known_ids(vault: &Vault) -> BTreeSet<String> {
     items.chain(decisions).collect()
 }
 
+/// The date of `YYYY-MM-DD HH:MM`.
+fn day_of(time: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(crate::text::take_chars(time, 10), "%Y-%m-%d").ok()
+}
+
+/// A date as the session said it, resolved against the day it was said; empty is that day.
+fn when_said(text: &str, said: NaiveDate) -> Option<crate::dates::When> {
+    if text.trim().is_empty() {
+        Some(crate::dates::When::day(said))
+    } else {
+        crate::dates::resolve(text, said)
+    }
+}
+
+/// The day of the user's message, in the digest, that the first quote found comes from (or follows).
+fn said_on(digest: &str, quotes: &[String]) -> Option<NaiveDate> {
+    let mut day = None;
+    for part in digest.split("\n## User [") {
+        if let Some(d) = part.split(']').next().and_then(day_of) {
+            day = Some(d);
+        }
+        let text = evidence::normalize(part);
+        if quotes.iter().any(|q| evidence::found_in(q, &text)) {
+            return day;
+        }
+    }
+    None
+}
+
 /// Quotes as a record keeps them: one `>` line each, a blank line between.
 fn quote_lines(quotes: &[String]) -> String {
     quotes
@@ -607,7 +748,8 @@ mod tests {
 
     /// What the user said in the session `answer()` distills.
     const USER: &str = "Login is too slow, it runs the same query twice. Use a per-request cache, \
-        not a global one. Measure before caching anything.";
+        not a global one. Measure before caching anything. We moved the API to port 9090 yesterday \
+        and released 0.3.0 last Tuesday.";
 
     /// The digest `answer()` quotes from.
     fn digest() -> String {
@@ -673,6 +815,19 @@ mod tests {
                 "rule": "Measure before caching.",
                 "evidence": ["Measure before caching anything"]
             }],
+            "facts": [{
+                "key": "API port",
+                "value": "9090",
+                "from": "yesterday",
+                "evidence": ["moved the API to port 9090 yesterday"]
+            }],
+            "events": [{
+                "what": "Released 0.3.0",
+                "kind": "release",
+                "status": "done",
+                "when": "last Tuesday",
+                "evidence": ["released 0.3.0 last Tuesday"]
+            }],
             "state": {
                 "what": "A web app.",
                 "architecture": "Rust backend.",
@@ -700,6 +855,8 @@ mod tests {
                 "item_updates",
                 "new_decisions",
                 "rules",
+                "facts",
+                "events",
                 "state"
             ]
         );
@@ -788,6 +945,18 @@ mod tests {
             decision.body
         );
         assert!(out.left_out.is_empty(), "{:?}", out.left_out);
+
+        // Dates as said, resolved against the day of the message (Sunday 2026-10-25).
+        assert_eq!(out.facts_set, ["API port = 9090"]);
+        let facts = crate::facts::read(&vault, Some("app")).unwrap();
+        assert_eq!(facts[0].from.display(), "2026-10-24");
+        assert_eq!(facts[0].source, "transcript 1a2b3c4d");
+        assert_eq!(out.events_added, 1);
+        let events = crate::events::read(&vault, "app").unwrap();
+        assert_eq!(events[0].when.display(), "2026-10-20");
+        assert_eq!(events[0].said, "2026-10-25");
+        assert!(out.files.contains(&PathBuf::from("projects/app/facts.md")));
+        assert!(out.files.contains(&PathBuf::from("projects/app/events.md")));
         assert_eq!(
             decision.get("related").unwrap().items(),
             ["app-0001"],
@@ -848,6 +1017,8 @@ mod tests {
         a["new_decisions"][0]["evidence"] = serde_json::json!(["ok"]);
         // The assistant said it, the user did not: a rule needs the user's own words.
         a["rules"][0]["evidence"] = serde_json::json!(["Half of the slowness is gone."]);
+        a["facts"][0]["evidence"] = serde_json::json!(["the port is 8080"]);
+        a["events"][0]["when"] = "sometime soon".into();
         let d = Distilled::from_json(a).unwrap();
         let out = apply(&vault, &session(&digest()), &d, day("2026-10-25")).unwrap();
         assert!(out.items_added.is_empty());
@@ -860,7 +1031,9 @@ mod tests {
                 "item \"Cache the login query\"",
                 "change to app-0001",
                 "decision \"Cache per request, not globally\"",
-                "rule \"Measure before caching.\""
+                "rule \"Measure before caching.\"",
+                "fact \"API port\"",
+                "event \"Released 0.3.0\": the date \"sometime soon\" is not understood"
             ]
         );
         let card = Record::read(&vault.root().join(&out.card)).unwrap();

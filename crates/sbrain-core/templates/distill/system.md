@@ -25,6 +25,15 @@ types stay exactly as in the schema.
   choice the assistant made alone is not a decision.
 - `rules`: when the user corrected the assistant ("don't do it like this"), one line each: `project` when
   it is about this project, `general` when it applies everywhere.
+- `facts`: values about the project that hold for a while and may change later: a version, a port, a
+  host, a service it uses, a limit, who owns something. `key` names the thing in a few words, the same
+  way each time (the input lists the facts that hold now: reuse their keys); `value` is the value. Give
+  only what the session stated or changed, not what was already listed with the same value.
+- `events`: things that happened once or are planned: a release, a deploy, an incident, a migration, a
+  meeting. `kind` is one lowercase word; `status` is done, planned or cancelled.
+- For `from` and `when`, copy the date as the session said it ("yesterday", "geçen salı", "3 days ago",
+  "2026-10-20", "in March"), or leave it empty when it is the day it was said. Never work a date out
+  yourself: sbrain resolves the words against the time of the message they were in.
 - `state`: only when the input says `state.md` is still the template. Fill what the project is, its
   architecture, what works, what does not, and how to run and test it, from what the session showed.
   Otherwise `null`.
@@ -35,7 +44,7 @@ types stay exactly as in the schema.
 
 ## Evidence
 
-Every new item, item update, new decision and rule carries `evidence`: one to three quotes copied
+Every new item, item update, new decision, rule, fact and event carries `evidence`: one to three quotes copied
 character for character from the digest that show it happened. Copy the words exactly as they are, in
 their language; do not translate, fix or shorten them inside a quote. To leave words out in the middle,
 write `…`; each part must still be in the digest, in that order. A quote needs at least a few words: a
