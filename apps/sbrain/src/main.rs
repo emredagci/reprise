@@ -75,6 +75,31 @@ enum Command {
         #[command(subcommand)]
         action: ItemAction,
     },
+    /// Facts: values that hold for a while (a version, a port, a host). A new value closes the old one.
+    Fact {
+        #[command(subcommand)]
+        action: FactAction,
+    },
+    /// Events: things that happened once, or are planned (a release, a deploy, an incident).
+    Event {
+        #[command(subcommand)]
+        action: EventAction,
+    },
+    /// A project's events in order, with how many of each kind, the gaps between them and how long ago
+    /// each was, computed for today.
+    Timeline {
+        /// Defaults to the project of the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Only events of this kind.
+        #[arg(long)]
+        kind: Option<String>,
+        /// Only events from this date on; words like "last month" work.
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// Every item with its sections, newest first, as JSON.
     Items,
     /// Checks the vault: broken records, unverified or forgotten work, stale items, broken links,
@@ -334,6 +359,83 @@ enum HookEvent {
     PreCompact,
 }
 
+/// Where a fact belongs: a project (by default the working directory's), or every project.
+#[derive(clap::Args)]
+struct FactScope {
+    #[arg(long, conflicts_with = "general")]
+    project: Option<String>,
+    /// A fact about no single project (`profile/facts.md`).
+    #[arg(long)]
+    general: bool,
+}
+
+#[derive(Subcommand)]
+enum FactAction {
+    /// Gives a key a value from a date on; the value it held is closed on that date.
+    Set {
+        #[command(flatten)]
+        scope: FactScope,
+        key: String,
+        value: String,
+        /// When it became true: a date, a month, or words like "yesterday", "geçen hafta".
+        #[arg(long, default_value = "today")]
+        from: String,
+        /// For a value that already stopped holding: when it ended. It is written as history.
+        #[arg(long)]
+        to: Option<String>,
+        /// The record or session it came from.
+        #[arg(long, default_value = "")]
+        source: String,
+    },
+    /// The key stops holding on a date, with nothing in its place.
+    End {
+        #[command(flatten)]
+        scope: FactScope,
+        key: String,
+        #[arg(long, default_value = "today")]
+        on: String,
+    },
+    /// The facts that hold now (or on `--at`), as JSON; `--all` lists the closed ones too.
+    List {
+        #[command(flatten)]
+        scope: FactScope,
+        #[arg(long, conflicts_with = "all")]
+        at: Option<String>,
+        #[arg(long)]
+        all: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EventAction {
+    /// Writes an event in its place in time.
+    Add {
+        #[arg(long)]
+        project: Option<String>,
+        /// What happened.
+        what: String,
+        /// When: a date, a month, or words like "yesterday", "3 gün önce", "last week".
+        #[arg(long, default_value = "today")]
+        when: String,
+        /// One word: release, deploy, incident, migration…
+        #[arg(long, default_value = "other")]
+        kind: String,
+        /// done, planned or cancelled.
+        #[arg(long, default_value = "done")]
+        status: String,
+        /// The day it was said, which `--when` counts from (default today).
+        #[arg(long)]
+        said: Option<String>,
+        #[arg(long, default_value = "")]
+        source: String,
+    },
+    /// The project's events as JSON.
+    List {
+        #[arg(long)]
+        project: Option<String>,
+    },
+}
+
 #[derive(Subcommand)]
 enum SetupAction {
     /// Validates and saves the vault and access choice together. An empty vault folder becomes a new vault.
@@ -414,6 +516,29 @@ fn main() -> Result<()> {
         Command::Overview => print_json(&sbrain_core::overview::overview(&open_vault(cli.vault)?)?),
         Command::Graph => print_json(&sbrain_core::graph::graph(&open_vault(cli.vault)?)?),
         Command::Item { action } => item(action, cli.vault),
+        Command::Fact { action } => fact(action, cli.vault),
+        Command::Event { action } => event(action, cli.vault),
+        Command::Timeline {
+            project,
+            kind,
+            since,
+            json,
+        } => {
+            let vault = open_vault(cli.vault)?;
+            let project = project_or_cwd(&vault, project)?;
+            let today = chrono::Local::now().date_naive();
+            let since = since
+                .map(|s| when(&s, today).map(|w| w.start))
+                .transpose()?;
+            let events = sbrain_core::events::read(&vault, &project)?;
+            let t = sbrain_core::events::timeline(&events, kind.as_deref(), since, today);
+            if json {
+                print_json(&t)
+            } else {
+                print!("{}", t.render());
+                Ok(())
+            }
+        }
         Command::Items => print_json(&sbrain_core::browse::items(&open_vault(cli.vault)?)?),
         Command::Doctor { quick, json } => {
             let vault = open_vault(cli.vault)?;
@@ -824,6 +949,141 @@ fn item(action: ItemAction, vault: Option<PathBuf>) -> Result<()> {
         &format!("item({}): {change} {}", written.project, written.id),
     );
     print_json(&written)
+}
+
+/// A date said in words or written, against `anchor`.
+fn when(text: &str, anchor: chrono::NaiveDate) -> Result<sbrain_core::dates::When> {
+    sbrain_core::dates::resolve(text, anchor).with_context(|| {
+        format!("{text:?} is not a date sbrain understands; write YYYY-MM-DD, YYYY-MM or words like \"yesterday\"")
+    })
+}
+
+fn fact_scope(vault: &Vault, scope: FactScope) -> Result<Option<String>> {
+    if scope.general {
+        Ok(None)
+    } else {
+        project_or_cwd(vault, scope.project).map(Some)
+    }
+}
+
+fn fact(action: FactAction, vault: Option<PathBuf>) -> Result<()> {
+    let vault = open_vault(vault)?;
+    let today = chrono::Local::now().date_naive();
+    let label = |p: &Option<String>| p.clone().unwrap_or_else(|| "general".into());
+    let (path, message, out) = match action {
+        FactAction::List { scope, at, all } => {
+            let project = fact_scope(&vault, scope)?;
+            let facts = sbrain_core::facts::read(&vault, project.as_deref())?;
+            let shown: Vec<&sbrain_core::facts::Fact> = match (at, all) {
+                (_, true) => facts.iter().collect(),
+                (Some(at), _) => sbrain_core::facts::on(&facts, when(&at, today)?.start),
+                (None, _) => sbrain_core::facts::current(&facts),
+            };
+            return print_json(&shown);
+        }
+        FactAction::Set {
+            scope,
+            key,
+            value,
+            from,
+            to,
+            source,
+        } => {
+            let project = fact_scope(&vault, scope)?;
+            let from = when(&from, today)?;
+            if let Some(to) = to {
+                let to = when(&to, today)?;
+                let path = sbrain_core::facts::history(
+                    &vault,
+                    project.as_deref(),
+                    &key,
+                    &value,
+                    (from, to),
+                    &source,
+                    today,
+                )?;
+                let msg = format!("fact({}): {key} was {value}", label(&project));
+                (path, msg, serde_json::json!({"outcome": "history"}))
+            } else {
+                let (outcome, path) = sbrain_core::facts::set(
+                    &vault,
+                    project.as_deref(),
+                    &key,
+                    &value,
+                    from,
+                    &source,
+                    today,
+                )?;
+                if outcome == sbrain_core::facts::Set::Same {
+                    return print_json(&outcome);
+                }
+                let msg = format!("fact({}): {key} = {value}", label(&project));
+                (path, msg, serde_json::to_value(&outcome)?)
+            }
+        }
+        FactAction::End { scope, key, on } => {
+            let project = fact_scope(&vault, scope)?;
+            let (old, path) =
+                sbrain_core::facts::end(&vault, project.as_deref(), &key, when(&on, today)?)?;
+            let msg = format!("fact({}): {key} no longer {old}", label(&project));
+            (
+                path,
+                msg,
+                serde_json::json!({"outcome": "ended", "old": old}),
+            )
+        }
+    };
+    sbrain_core::git::commit(vault.root(), std::slice::from_ref(&path), &message);
+    print_json(&out)
+}
+
+fn event(action: EventAction, vault: Option<PathBuf>) -> Result<()> {
+    let vault = open_vault(vault)?;
+    let today = chrono::Local::now().date_naive();
+    match action {
+        EventAction::List { project } => {
+            let project = project_or_cwd(&vault, project)?;
+            let events = sbrain_core::events::read(&vault, &project)?;
+            let t = sbrain_core::events::timeline(&events, None, None, today);
+            print_json(&t.entries)
+        }
+        EventAction::Add {
+            project,
+            what,
+            when: at,
+            kind,
+            status,
+            said,
+            source,
+        } => {
+            let project = project_or_cwd(&vault, project)?;
+            let said = match said {
+                Some(s) => when(&s, today)?.start,
+                None => today,
+            };
+            let at = when(&at, said)?;
+            let (added, path) = sbrain_core::events::add(
+                &vault,
+                &project,
+                sbrain_core::events::Event {
+                    when: at,
+                    what: what.clone(),
+                    kind,
+                    status,
+                    said: said.format("%Y-%m-%d").to_string(),
+                    source,
+                },
+            )?;
+            if added {
+                sbrain_core::git::commit(
+                    vault.root(),
+                    std::slice::from_ref(&path),
+                    &format!("event({project}): {what}"),
+                );
+            }
+            print_json(&serde_json::json!({"added": added, "when": at.display(), "file": path}))
+        }
+    }
 }
 
 /// `project`, or the project of the working directory.
