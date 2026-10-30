@@ -133,6 +133,10 @@ pub struct DistillRun<'a> {
 }
 
 pub trait Sweeper: Send + Sync {
+    /// Whether the client keeps session transcripts to sweep; an engine-only client does not.
+    fn keeps_transcripts(&self) -> bool {
+        true
+    }
     /// The transcripts on this machine, except those of sessions that ran in `skip` (the
     /// distiller's own folder).
     fn transcripts(&self, skip: &Path) -> Result<Vec<Transcript>>;
