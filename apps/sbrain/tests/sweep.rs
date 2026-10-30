@@ -81,6 +81,8 @@ impl Env {
             .env("SBRAIN_CLAUDE_BIN", self.root.join("claude.sh"))
             .env("CODEX_HOME", self.root.join("codex"))
             .env("SBRAIN_CODEX_BIN", self.root.join("codex.sh"))
+            .env("SBRAIN_CURL_BIN", self.root.join("curl.sh"))
+            .env("OPENROUTER_API_KEY", "sk-or-test")
             .env_remove("SBRAIN_VAULT")
             .output()
             .unwrap()
@@ -701,5 +703,63 @@ fn a_kept_answer_is_replayed_without_the_engine() {
         !env.sbrain(&["sweep", "replay", "nope-0000"])
             .status
             .success()
+    );
+}
+
+/// OpenRouter distills through curl: the key reaches curl on stdin, never on its command line.
+#[test]
+fn openrouter_distills_through_curl() {
+    let env = Env::new(r#"{"is_error":true,"result":"claude must not distill"}"#);
+    let structured: Value = serde_json::from_str(ANSWER).unwrap();
+    let reply = serde_json::json!({
+        "choices": [{"message": {"content": structured["structured_output"].to_string()}}]
+    });
+    let log = env.root.join("curl.log");
+    let script = env.root.join("curl.sh");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" > '{}'\ncat >> '{}'\nprintf '%s' '{}'\n",
+            log.display(),
+            log.display(),
+            reply
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let no_model = env.sbrain(&["engine", "set", "openrouter"]);
+    assert!(no_model.status.success());
+    assert!(
+        env.sbrain(&[
+            "engine",
+            "set",
+            "openrouter",
+            "--model",
+            "typesafe/jev-router"
+        ])
+        .status
+        .success()
+    );
+    assert!(env.sbrain(&["connect", "claude", "--yes"]).status.success());
+    env.sweep(&[]);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    env.transcript(
+        "0a0a0a0a-0000",
+        &env.root.join("work/app"),
+        &["cache the login query", "commit it"],
+    );
+    let run = env.sweep(&[]);
+    let s = sessions(&run);
+    assert_eq!(s[0]["status"], "ok", "{run:?}");
+    assert_eq!(s[0]["applied"]["items_added"][0], "app-0001");
+    let log = std::fs::read_to_string(&log).unwrap();
+    let args = log.lines().next().unwrap();
+    assert!(
+        !args.contains("sk-or-test"),
+        "not on the command line: {args}"
+    );
+    assert!(
+        log.contains("Authorization: Bearer sk-or-test"),
+        "on stdin: {log}"
     );
 }
