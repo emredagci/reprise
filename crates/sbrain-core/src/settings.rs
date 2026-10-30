@@ -22,6 +22,9 @@ pub struct Settings {
     /// How often the sweep runs on this computer (`sbrain sweep --due`, started by `sbrain sweep schedule`).
     #[serde(default, skip_serializing_if = "SweepSettings::is_default")]
     pub sweep: SweepSettings,
+    /// The embeddings service meaning search uses; off when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embeddings: Option<crate::vectors::Embeddings>,
 }
 
 /// The sweep's schedule. Per machine: another computer on the same vault keeps its own.
@@ -225,6 +228,11 @@ mod tests {
                 every_hours: 6,
                 per_run: 8,
             },
+            embeddings: Some(crate::vectors::Embeddings {
+                url: "http://localhost:11434/v1/embeddings".into(),
+                model: "nomic-embed-text".into(),
+                key_env: None,
+            }),
         };
         s.save_to(&path).unwrap();
         assert_eq!(Settings::load_from(&path).unwrap(), s);
