@@ -125,6 +125,16 @@ enum Command {
         #[arg(long)]
         undo: bool,
     },
+    /// Writes the vault to one `.tar.gz`: records, profile, notes, settings and the sweep's kept
+    /// sessions. The git history goes along only with `--history`.
+    Export {
+        archive: PathBuf,
+        #[arg(long)]
+        history: bool,
+    },
+    /// Unpacks an archive `export` wrote into an empty folder; `sbrain setup set --vault <folder>`
+    /// then makes it the vault.
+    Restore { archive: PathBuf, folder: PathBuf },
     /// Every item with its sections, newest first, as JSON.
     Items,
     /// Checks the vault: broken records, unverified or forgotten work, stale items, broken links,
@@ -255,6 +265,10 @@ enum SweepAction {
         /// The session id; without it, every session given up on.
         session: Option<String>,
     },
+    /// Writes a distilled session's records again from the engine's kept answer, without calling it:
+    /// into a vault that lost them, or one restored from an archive. A session that has a card is
+    /// refused, so nothing is written twice.
+    Replay { session: String },
 }
 
 #[derive(Subcommand)]
@@ -586,6 +600,22 @@ fn main() -> Result<()> {
                     .map(|d| d.format("%Y-%m-%d").to_string()),
             }))
         }
+        Command::Export { archive, history } => {
+            let vault = open_vault(cli.vault)?;
+            let n = sbrain_core::archive::export(&vault, &archive, history)?;
+            println!("Wrote {n} files to {}.", archive.display());
+            Ok(())
+        }
+        Command::Restore { archive, folder } => {
+            let vault = sbrain_core::archive::restore(&archive, &folder)?;
+            println!(
+                "Restored the vault in {}. Use it with `sbrain setup set --vault {} --auto` (or --folder …); \
+                 `sbrain sweep replay <session>` writes a kept session's records again.",
+                vault.root().display(),
+                vault.root().display()
+            );
+            Ok(())
+        }
         Command::Fact { action } => fact(action, cli.vault),
         Command::Event { action } => event(action, cli.vault),
         Command::Timeline {
@@ -646,6 +676,47 @@ fn main() -> Result<()> {
             action: Some(SweepAction::Unschedule),
             ..
         } => unschedule(),
+        Command::Sweep {
+            action: Some(SweepAction::Replay { session }),
+            ..
+        } => {
+            let vault = open_vault(cli.vault)?;
+            let kept = sbrain_core::kept::load(&vault, &session)
+                .with_context(|| format!("nothing is kept of {session} on this machine"))?;
+            let answer = kept
+                .answer
+                .clone()
+                .with_context(|| format!("the engine never answered for {session}"))?;
+            if sbrain_core::store::find_card(&vault, &kept.project, &session).is_some() {
+                anyhow::bail!(
+                    "{session} already has a card in {}; nothing was written",
+                    kept.project
+                );
+            }
+            let today = chrono::Local::now().date_naive();
+            sbrain_core::scaffold::ensure_project(&vault, &kept.project, None, today)?;
+            let s = sbrain_core::distill::Session {
+                id: &kept.session,
+                project: &kept.project,
+                cwd: &kept.cwd,
+                first: &kept.first,
+                last: &kept.last,
+                digest: &kept.digest,
+                user_text: &kept.user_text,
+            };
+            let d = sbrain_core::distill::Distilled::from_json(answer)?;
+            let applied = sbrain_core::distill::apply(&vault, &s, &d, today)?;
+            let short = sbrain_core::text::take_chars(&session, 8);
+            sbrain_core::git::commit(
+                vault.root(),
+                &applied.files,
+                &format!(
+                    "sweep({}): {short} replayed from the kept answer",
+                    kept.project
+                ),
+            );
+            print_json(&applied)
+        }
         Command::Sweep {
             action: Some(SweepAction::Retry { session }),
             ..

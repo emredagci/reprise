@@ -235,6 +235,10 @@ The sweep's settings in the vault are under `[sweep]` in `.sbrain/vault.toml`.
 | `sbrain sweep [--due] [--dry-run] [--json]` | Distill sessions that ended without a handoff card |
 | `sbrain sweep schedule [--every <hours>] [--per-run <n>]`, `sbrain sweep unschedule` | Have this computer run the sweep by itself |
 | `sbrain sweep retry [<session>]` | Try again a session the sweep gave up on |
+| `sbrain sweep replay <session>` | Write a distilled session's records again from the engine's kept answer, without the engine |
+| `sbrain search "<phrasing>" … [--project <name>]` | Hits, partial matches, records one link away and terms nothing matched, as JSON |
+| `sbrain reset [--on <date>] [--note …]`, `sbrain reset --undo` | Leave a project's past out of session start from a day on; nothing is deleted |
+| `sbrain export <file.tar.gz> [--history]`, `sbrain restore <file> <folder>` | Move a vault as one file |
 | `sbrain rule list`, `sbrain rule accept <id>`, `sbrain rule reject <id>` | Rules the sweep proposed, and putting one in effect |
 | `sbrain import <folder> [--yes]` | Import a format 1 vault |
 

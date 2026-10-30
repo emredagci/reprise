@@ -579,6 +579,18 @@ impl Run<'_> {
             digest: &digest.text,
             user_text: &user_text,
         };
+        // Kept before the engine runs, so the session outlives its transcript even when distilling fails.
+        let mut kept = sbrain_core::kept::Kept {
+            session: session.to_owned(),
+            project: project.clone(),
+            cwd: cwd.clone(),
+            first: s.first.to_owned(),
+            last: s.last.to_owned(),
+            digest: digest.text.clone(),
+            user_text: user_text.clone(),
+            answer: None,
+        };
+        let _ = sbrain_core::kept::save(self.vault, &kept);
         let input = distill::input(self.vault, &s);
         let run = DistillRun {
             system: distill::SYSTEM_PROMPT,
@@ -593,6 +605,10 @@ impl Run<'_> {
             .sweeper
             .distill(&run)
             .map_err(|e| e.to_string())
+            .inspect(|answer| {
+                kept.answer = Some(answer.clone());
+                let _ = sbrain_core::kept::save(self.vault, &kept);
+            })
             .and_then(|answer| Distilled::from_json(answer).map_err(|e| e.to_string()))
             .and_then(|d| distill::apply(self.vault, &s, &d, today).map_err(|e| e.to_string()));
         match applied {

@@ -650,3 +650,56 @@ fn the_engine_distills_every_agents_sessions() {
     }
     assert!(sessions(&env.sweep(&[])).is_empty(), "nothing is due twice");
 }
+
+/// A distilled session is kept on the machine with the engine's answer, and its records can be written
+/// again from it without the engine, once.
+#[test]
+fn a_kept_answer_is_replayed_without_the_engine() {
+    let env = Env::new(ANSWER);
+    let work = env.root.join("work/app");
+    env.sweep(&[]);
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    env.transcript(
+        "5e5e5e5e-0000",
+        &work,
+        &["cache the login query", "commit it"],
+    );
+    let run = env.sweep(&[]);
+    assert_eq!(sessions(&run)[0]["status"], "ok");
+    let kept: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            env.vault()
+                .join(".sbrain/cache/sessions/5e5e5e5e-0000.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        kept["digest"]
+            .as_str()
+            .unwrap()
+            .contains("cache the login query")
+    );
+    assert!(kept["answer"]["new_items"].is_array());
+
+    let refused = env.sbrain(&["sweep", "replay", "5e5e5e5e-0000"]);
+    assert!(!refused.status.success(), "it has a card already");
+
+    // The project's records are lost; the engine is gone too.
+    std::fs::remove_dir_all(env.vault().join("projects/app")).unwrap();
+    env.answer_with("broken");
+    let out = env.sbrain(&["sweep", "replay", "5e5e5e5e-0000"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let applied: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(applied["items_added"][0], "app-0001");
+    assert!(env.vault().join("projects/app/items").is_dir());
+    assert!(
+        !env.sbrain(&["sweep", "replay", "nope-0000"])
+            .status
+            .success()
+    );
+}

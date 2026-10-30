@@ -45,6 +45,7 @@ vault (`AGENTS.md`) follow it.
       gotchas.md            project-specific pitfalls and rules
       facts.md              values that hold for a while, with their dates
       events.md             what happened once or is planned, in order
+      resets.md             resets of the project and their undos
       items/                one file per bug, feature, idea or debt
       decisions/            one file per decision
       sessions/             handoff cards
@@ -279,6 +280,21 @@ they happen:
 kind how many happened, the latest, the average gap and the next planned one. Agents quote it instead of
 working dates out.
 
+### `resets.md`
+
+`sbrain reset --on <date>` adds a `reset` row; `sbrain reset --undo` adds an `undo` row that cancels the
+latest reset still in effect. Rows are never removed. While a reset is in effect, session start treats the
+project's facts that began before it as no longer current, and leaves out the events before it, the last
+handoff before it and open work not updated since. Every record stays in the vault, in `sbrain items` and
+in `sbrain search`.
+
+### Moving a vault
+
+`sbrain export <file.tar.gz>` writes the vault (records, profile, notes, `.sbrain/vault.toml` and the kept
+sessions; the git history only with `--history`) to one archive. `sbrain restore <file> <empty folder>`
+unpacks it after checking that no member would land outside the folder and none is a link, and opens it
+as a vault; `sbrain setup set` then makes it the one in use.
+
 ### Dates in words
 
 `sbrain fact`, `sbrain event` and the sweep take dates as they were said and resolve them against the day
@@ -329,6 +345,8 @@ agent needs arrives through the hook and the vault's own `AGENTS.md`.
 | `sweep.json` | when sweeping started, and the last run |
 | `ledger.sqlite` | the job ledger: each session's distilling, sessions reported as ended, and vault commits that failed, with their attempts, last error and next try |
 | `sweep.lock` | held while `sbrain sweep` runs, so two runs never overlap |
+| `sessions/<session>.json` | each distilled session's digest and user messages (secrets masked) and the engine's answer: the session outlives its transcript, and `sbrain sweep replay <session>` writes its records again without the engine |
+| `compact/<session>.md`, `compact/<session>.instructions.md` | the user's messages kept through a compaction, and the instructions among them; removed after 14 days |
 
 The ledger (SQLite) is how nothing that has to happen is lost: a job that fails is tried again after a
 wait that grows each time (1 minute, 5 minutes, 30 minutes, 2 hours, 12 hours, then daily) and is given up
