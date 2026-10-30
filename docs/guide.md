@@ -148,7 +148,9 @@ asked along the way, and the sweep has not distilled the session yet, so the use
 word for word, secrets masked, to `.sbrain/cache/compact/<session>.md` (machine-local, removed after 14 days).
 The session start that follows the compaction adds them to its context under "Kept through compaction",
 within 3500 characters: messages that read like instructions or corrections first ("from now on", "never",
-"bundan sonra", "yazma"), then the newest, shown in the order they were written.
+"bundan sonra", "yazma"), then the newest, shown in the order they were written. The instructions among
+them also come with every prompt for the rest of the session, within 1500 characters, so the summary
+cannot push them out of view.
 
 Every `sbrain` command except the hooks keeps the connection working. A connection missing one of the hooks
 gets it back, recorded like the others, so `sbrain disconnect` removes it too. When the sbrain the hooks run
