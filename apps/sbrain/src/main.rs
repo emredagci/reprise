@@ -100,6 +100,31 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Searches the records with several phrasings at once, as JSON: hits, partial matches, records
+    /// one link away from the hits, and the terms nothing matched.
+    Search {
+        /// One or more phrasings of the same question.
+        #[arg(required = true)]
+        queries: Vec<String>,
+        /// Defaults to the project of the working directory; repeat for more.
+        #[arg(long = "project")]
+        projects: Vec<String>,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// From a day on, session start leaves out the project's past: facts that held before it, earlier
+    /// events, and work not touched since. Nothing is deleted; `--undo` cancels the latest reset.
+    Reset {
+        #[arg(long)]
+        project: Option<String>,
+        /// The day it starts from (default today); words like "last monday" work.
+        #[arg(long, default_value = "today", conflicts_with = "undo")]
+        on: String,
+        #[arg(long, default_value = "", conflicts_with = "undo")]
+        note: String,
+        #[arg(long)]
+        undo: bool,
+    },
     /// Every item with its sections, newest first, as JSON.
     Items,
     /// Checks the vault: broken records, unverified or forgotten work, stale items, broken links,
@@ -516,6 +541,51 @@ fn main() -> Result<()> {
         Command::Overview => print_json(&sbrain_core::overview::overview(&open_vault(cli.vault)?)?),
         Command::Graph => print_json(&sbrain_core::graph::graph(&open_vault(cli.vault)?)?),
         Command::Item { action } => item(action, cli.vault),
+        Command::Search {
+            queries,
+            projects,
+            limit,
+        } => {
+            let vault = open_vault(cli.vault)?;
+            let projects = if projects.is_empty() {
+                vec![project_or_cwd(&vault, None)?]
+            } else {
+                projects
+            };
+            print_json(&sbrain_core::search::search(
+                &vault, &projects, &queries, limit,
+            )?)
+        }
+        Command::Reset {
+            project,
+            on,
+            note,
+            undo,
+        } => {
+            let vault = open_vault(cli.vault)?;
+            let project = project_or_cwd(&vault, project)?;
+            let today = chrono::Local::now().date_naive();
+            let (day, path, message) = if undo {
+                let (day, path) = sbrain_core::reset::undo(&vault, &project, today)?;
+                (
+                    day,
+                    path,
+                    format!("reset({project}): undo the reset of {day}"),
+                )
+            } else {
+                let day = when(&on, today)?.start;
+                let path = sbrain_core::reset::reset(&vault, &project, day, &note)?;
+                (day, path, format!("reset({project}): from {day}"))
+            };
+            sbrain_core::git::commit(vault.root(), std::slice::from_ref(&path), &message);
+            print_json(&serde_json::json!({
+                "project": project,
+                "undone": undo,
+                "day": day.format("%Y-%m-%d").to_string(),
+                "active": sbrain_core::reset::active(&vault, &project)
+                    .map(|d| d.format("%Y-%m-%d").to_string()),
+            }))
+        }
         Command::Fact { action } => fact(action, cli.vault),
         Command::Event { action } => event(action, cli.vault),
         Command::Timeline {

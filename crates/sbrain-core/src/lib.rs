@@ -29,6 +29,7 @@ pub mod doctor;
 pub mod index;
 pub mod ledger;
 pub mod report;
+pub mod reset;
 pub mod search;
 pub mod secret;
 pub mod stale;

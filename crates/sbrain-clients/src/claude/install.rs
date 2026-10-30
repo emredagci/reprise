@@ -32,7 +32,7 @@ use crate::{Change, Error, Refresh, Result};
 /// What an agent may run without asking: reading the memory and writing records. Not setup, access,
 /// connect, import, sweep, `item verify` (it runs the command a record names), `rule accept`, or
 /// `engine set`: those change what every later session sees, and stay the user's call.
-pub const PERMISSIONS: [&str; 30] = [
+pub const PERMISSIONS: [&str; 31] = [
     "Bash(sbrain project)",
     "Bash(sbrain project *)",
     "Bash(sbrain overview)",
@@ -63,6 +63,7 @@ pub const PERMISSIONS: [&str; 30] = [
     "Bash(sbrain event list *)",
     "Bash(sbrain timeline)",
     "Bash(sbrain timeline *)",
+    "Bash(sbrain search *)",
 ];
 const HOOK_TIMEOUT: u64 = 10;
 /// Event, `sbrain hook` argument, and the tools it is limited to (Claude Code's `matcher`).
