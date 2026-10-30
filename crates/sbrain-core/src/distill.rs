@@ -1,7 +1,8 @@
 //! Distilling one session into records. The engine gets the instructions (`templates/distill/system.md`)
 //! and an input built here from the vault and the session's transcript digest, and answers with JSON
 //! matching `templates/distill/schema.json`. It never writes to the vault: what comes back is
-//! checked here first, and only then written through `store`.
+//! checked here first, records whose quotes are not in the session are left out (`evidence`), and
+//! only then is the rest written through `store`.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -12,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::record::{Record, Value};
 use crate::schema::{ItemStatus, ItemType};
 use crate::store::{self, CardSource, Change, NewDecision, NewItem};
-use crate::{Error, Result, Vault};
+use crate::{Error, Result, Vault, evidence};
 
 /// Instructions for the engine.
 pub const SYSTEM_PROMPT: &str = include_str!("../templates/distill/system.md");
@@ -31,6 +32,8 @@ const STATE_SECTION_LIMIT: usize = 600;
 /// Open items and decisions listed in the input.
 const LISTED_ITEMS: usize = 60;
 const LISTED_DECISIONS: usize = 15;
+/// The section of an item or decision that keeps the quotes it was written from.
+const EVIDENCE: &str = "Evidence";
 /// The closing line of every card sbrain writes from a transcript.
 const CARD_NOTE: &str = "Distilled from the transcript; not verified.";
 
@@ -46,6 +49,8 @@ pub struct Session<'a> {
     pub last: &'a str,
     /// The transcript digest the client built.
     pub digest: &'a str,
+    /// Every message the user wrote, whole: rules must quote these.
+    pub user_text: &'a str,
 }
 
 /// The engine's answer (`templates/distill/schema.json`).
@@ -83,6 +88,8 @@ pub struct NewItemOut {
     pub aliases: Vec<String>,
     pub commit: String,
     pub verify: String,
+    /// Quotes from the digest that show the work.
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -95,6 +102,7 @@ pub struct ItemUpdate {
     pub verify: String,
     pub files: Vec<String>,
     pub note: String,
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -106,6 +114,7 @@ pub struct NewDecisionOut {
     pub why: String,
     pub alternatives: String,
     pub related: Vec<String>,
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -114,6 +123,8 @@ pub struct RuleOut {
     /// `project` or `general`.
     pub scope: String,
     pub rule: String,
+    /// Quotes from the user's own messages.
+    pub evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -136,6 +147,8 @@ pub struct Applied {
     /// Rules proposed (`store::propose_rule`), waiting for the user.
     pub rules_proposed: usize,
     pub state_filled: bool,
+    /// What the answer had but no quote in the session backed, so was not written.
+    pub left_out: Vec<String>,
     /// Every file written or changed, for the vault commit.
     pub files: Vec<PathBuf>,
 }
@@ -275,8 +288,16 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
     let session8 = crate::text::take_chars(s.id, 8);
     let mut out = Applied::default();
     let mut touched: Vec<String> = Vec::new();
+    let everything = evidence::normalize(&format!("{}\n{}", s.digest, s.user_text));
+    let users = evidence::normalize(s.user_text);
 
     for item in &d.new_items {
+        let quotes = evidence::supported(&item.evidence, &everything);
+        if quotes.is_empty() {
+            out.left_out
+                .push(format!("item \"{}\"", one_line(&item.title)));
+            continue;
+        }
         let new = NewItem {
             title: crate::text::clip(item.title.trim(), TITLE_LIMIT),
             kind: item.kind.parse().expect("checked"),
@@ -300,18 +321,21 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
         if !changes.is_empty() {
             store::set_item(vault, &w.id, &changes, today)?;
         }
-        if !item.solution.trim().is_empty() {
-            let path = vault.root().join(&w.path);
-            let mut record = Record::read(&path)?;
-            record.body = store::fill_section(&record.body, "Solution", &item.solution);
-            crate::scaffold::write(&path, &record.to_text())?;
-        }
+        let path = vault.root().join(&w.path);
+        let mut record = Record::read(&path)?;
+        record.body = store::fill_section(&record.body, "Solution", &item.solution);
+        record.body = store::fill_section(&record.body, EVIDENCE, &quote_lines(&quotes));
+        crate::scaffold::write(&path, &record.to_text())?;
         touched.push(w.id.clone());
         out.items_added.push(w.id);
         out.files.push(w.path);
     }
 
     for update in &d.item_updates {
+        if evidence::supported(&update.evidence, &everything).is_empty() {
+            out.left_out.push(format!("change to {}", update.id));
+            continue;
+        }
         let mut changes = Vec::new();
         if !update.status.is_empty() {
             changes.push(Change::status(update.status.parse().expect("checked")));
@@ -349,6 +373,12 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
     let known = known_ids(vault);
     let mut decision_lines = Vec::new();
     for decision in &d.new_decisions {
+        let quotes = evidence::supported(&decision.evidence, &everything);
+        if quotes.is_empty() {
+            out.left_out
+                .push(format!("decision \"{}\"", one_line(&decision.title)));
+            continue;
+        }
         let new = NewDecision {
             title: crate::text::clip(decision.title.trim(), TITLE_LIMIT),
             context: decision.context.clone(),
@@ -365,6 +395,10 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
             commit: String::new(),
         };
         let w = store::add_decision(vault, s.project, &new, today)?;
+        let path = vault.root().join(&w.path);
+        let mut record = Record::read(&path)?;
+        record.body = store::fill_section(&record.body, EVIDENCE, &quote_lines(&quotes));
+        crate::scaffold::write(&path, &record.to_text())?;
         decision_lines.push(format!("{}: {}", w.id, one_line(&decision.title)));
         touched.push(w.id.clone());
         out.decisions_added.push(w.id);
@@ -374,8 +408,12 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
     // Rules found in a transcript are only proposed: text in a session (a tool's output, a file it
     // read) can pass for a correction from the user, and a rule reaches every later session.
     for rule in &d.rules {
-        let project = (rule.scope == "project").then_some(s.project);
         let text = crate::text::clip(&one_line(&rule.rule), RULE_LIMIT);
+        if evidence::supported(&rule.evidence, &users).is_empty() {
+            out.left_out.push(format!("rule \"{text}\""));
+            continue;
+        }
+        let project = (rule.scope == "project").then_some(s.project);
         if let Some(path) = store::propose_rule(vault, project, &text, s.id, today)? {
             out.rules_proposed += 1;
             if !out.files.contains(&path) {
@@ -391,7 +429,7 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
         out.files.push(path);
     }
 
-    let body = card_body(&d.card, &decision_lines, &touched);
+    let body = card_body(&d.card, &decision_lines, &touched, &out.left_out);
     let card = store::write_card(
         vault,
         s.project,
@@ -406,7 +444,12 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
 }
 
 /// The card's sections, in the vault format's order, with the closing note.
-fn card_body(card: &CardOut, new_decisions: &[String], touched: &[String]) -> String {
+fn card_body(
+    card: &CardOut,
+    new_decisions: &[String],
+    touched: &[String],
+    left_out: &[String],
+) -> String {
     let bullets = |lines: &[String]| {
         let lines: Vec<String> = lines
             .iter()
@@ -419,6 +462,11 @@ fn card_body(card: &CardOut, new_decisions: &[String], touched: &[String]) -> St
     let mut decisions = card.decisions.clone();
     decisions.extend(new_decisions.iter().cloned());
     let mut uncertain = card.uncertain.clone();
+    uncertain.extend(
+        left_out
+            .iter()
+            .map(|l| format!("Not written, no quote from the session backs it: {l}")),
+    );
     uncertain.push(CARD_NOTE.to_owned());
     let sections = [
         ("Done", bullets(&card.done)),
@@ -506,6 +554,15 @@ fn known_ids(vault: &Vault) -> BTreeSet<String> {
     items.chain(decisions).collect()
 }
 
+/// Quotes as a record keeps them: one `>` line each, a blank line between.
+fn quote_lines(quotes: &[String]) -> String {
+    quotes
+        .iter()
+        .map(|q| format!("> {q}"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn clean_list(values: &[String]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for v in values {
@@ -548,6 +605,18 @@ mod tests {
         (tmp, vault)
     }
 
+    /// What the user said in the session `answer()` distills.
+    const USER: &str = "Login is too slow, it runs the same query twice. Use a per-request cache, \
+        not a global one. Measure before caching anything.";
+
+    /// The digest `answer()` quotes from.
+    fn digest() -> String {
+        format!(
+            "## User [2026-10-25 09:00]\n{USER}\nAssistant: I cached the login query per request.\n    \
+             Half of the slowness is gone.\n$ cargo test login: ok"
+        )
+    }
+
     fn session(digest: &str) -> Session<'_> {
         Session {
             id: "1a2b3c4d-0000",
@@ -556,6 +625,7 @@ mod tests {
             first: "2026-10-25 09:00",
             last: "2026-10-25 10:15",
             digest,
+            user_text: USER,
         }
     }
 
@@ -577,7 +647,8 @@ mod tests {
                 "files": ["src/login.rs"],
                 "aliases": ["login cache"],
                 "commit": "abc1234",
-                "verify": "cargo test login"
+                "verify": "cargo test login",
+                "evidence": ["I cached the login query per request."]
             }],
             "item_updates": [{
                 "id": "app-0001",
@@ -585,7 +656,8 @@ mod tests {
                 "commit": "",
                 "verify": "",
                 "files": ["src/login.rs"],
-                "note": "Half of it is fixed by the cache."
+                "note": "Half of it is fixed by the cache.",
+                "evidence": ["cached the login query … Half of the slowness is gone"]
             }],
             "new_decisions": [{
                 "title": "Cache per request, not globally",
@@ -593,9 +665,14 @@ mod tests {
                 "decision": "A per-request cache.",
                 "why": "No invalidation needed.",
                 "alternatives": "A global cache with TTL.",
-                "related": ["app-0001", "nope-9999"]
+                "related": ["app-0001", "nope-9999"],
+                "evidence": ["Use a per-request cache, not a global one."]
             }],
-            "rules": [{ "scope": "project", "rule": "Measure before caching." }],
+            "rules": [{
+                "scope": "project",
+                "rule": "Measure before caching.",
+                "evidence": ["Measure before caching anything"]
+            }],
             "state": {
                 "what": "A web app.",
                 "architecture": "Rust backend.",
@@ -659,7 +736,7 @@ mod tests {
     fn applies_an_answer() {
         let (_tmp, vault) = vault();
         let d = Distilled::from_json(answer()).unwrap();
-        let out = apply(&vault, &session("digest"), &d, day("2026-10-25")).unwrap();
+        let out = apply(&vault, &session(&digest()), &d, day("2026-10-25")).unwrap();
         assert_eq!(out.items_added, ["app-0002"]);
         assert_eq!(out.items_updated, ["app-0001"]);
         assert_eq!(out.decisions_added, ["app-D-0001"]);
@@ -687,6 +764,12 @@ mod tests {
             "{}",
             new.body
         );
+        assert!(
+            new.body
+                .contains("## Evidence\n\n> I cached the login query per request.\n"),
+            "{}",
+            new.body
+        );
 
         let old = read(&out.files[1]);
         assert_eq!(old.text("status"), "doing");
@@ -697,6 +780,14 @@ mod tests {
         );
 
         let decision = read(&out.files[2]);
+        assert!(
+            decision
+                .body
+                .contains("## Evidence\n\n> Use a per-request cache, not a global one.\n"),
+            "{}",
+            decision.body
+        );
+        assert!(out.left_out.is_empty(), "{:?}", out.left_out);
         assert_eq!(
             decision.get("related").unwrap().items(),
             ["app-0001"],
@@ -739,13 +830,70 @@ mod tests {
         // A filled state.md is left alone the next time.
         let again = apply(
             &vault,
-            &session("digest"),
+            &session(&digest()),
             &Distilled::from_json(answer()).unwrap(),
             day("2026-10-26"),
         )
         .unwrap();
         assert!(!again.state_filled);
         assert_eq!(again.card, out.card, "the same session's card is rewritten");
+    }
+
+    #[test]
+    fn leaves_out_what_the_session_does_not_back() {
+        let (_tmp, vault) = vault();
+        let mut a = answer();
+        a["new_items"][0]["evidence"] = serde_json::json!(["We rewrote the login in Go."]);
+        a["item_updates"][0]["evidence"] = serde_json::json!([]);
+        a["new_decisions"][0]["evidence"] = serde_json::json!(["ok"]);
+        // The assistant said it, the user did not: a rule needs the user's own words.
+        a["rules"][0]["evidence"] = serde_json::json!(["Half of the slowness is gone."]);
+        let d = Distilled::from_json(a).unwrap();
+        let out = apply(&vault, &session(&digest()), &d, day("2026-10-25")).unwrap();
+        assert!(out.items_added.is_empty());
+        assert!(out.items_updated.is_empty());
+        assert!(out.decisions_added.is_empty());
+        assert_eq!(out.rules_proposed, 0);
+        assert_eq!(
+            out.left_out,
+            [
+                "item \"Cache the login query\"",
+                "change to app-0001",
+                "decision \"Cache per request, not globally\"",
+                "rule \"Measure before caching.\""
+            ]
+        );
+        let card = Record::read(&vault.root().join(&out.card)).unwrap();
+        assert!(
+            card.body.contains(
+                "- Not written, no quote from the session backs it: change to app-0001\n"
+            ),
+            "{}",
+            card.body
+        );
+        assert_eq!(
+            store::find_item(&vault, "app-0001")
+                .map(|(_, p)| Record::read(&p).unwrap().text("status").to_owned())
+                .unwrap(),
+            "inbox",
+            "the unbacked change is not made"
+        );
+    }
+
+    #[test]
+    fn secrets_never_reach_a_record() {
+        let (_tmp, vault) = vault();
+        let key = format!("ghp_{}", "Zz9".repeat(12));
+        let mut a = answer();
+        a["new_items"][0]["problem"] = format!("Deploy failed with token {key}").into();
+        let d = Distilled::from_json(a).unwrap();
+        let out = apply(&vault, &session(&digest()), &d, day("2026-10-25")).unwrap();
+        let text = fs::read_to_string(vault.root().join(&out.files[0])).unwrap();
+        assert!(!text.contains(&key), "{text}");
+        assert!(
+            text.contains("Deploy failed with token [redacted]"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -758,7 +906,7 @@ mod tests {
         let d = Distilled::from_json(bad).unwrap();
         let problems = check(&vault, "app", &d);
         assert_eq!(problems.len(), 3, "{problems:?}");
-        assert!(apply(&vault, &session("digest"), &d, day("2026-10-25")).is_err());
+        assert!(apply(&vault, &session(&digest()), &d, day("2026-10-25")).is_err());
         assert!(
             !vault.project_dir("app").join("sessions").exists(),
             "nothing is written"

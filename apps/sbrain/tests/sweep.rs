@@ -8,7 +8,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-const ANSWER: &str = r#"{"is_error":false,"subtype":"success","structured_output":{"card":{"done":["Cached the login query"],"decisions":[],"open":[],"next_step":"Measure it.","uncertain":[]},"new_items":[{"title":"Cache the login query","type":"feature","status":"done-unverified","problem":"Slow.","solution":"Cached.","files":[],"aliases":[],"commit":"","verify":"cargo test login"}],"item_updates":[],"new_decisions":[],"rules":[],"state":null}}"#;
+const ANSWER: &str = r#"{"is_error":false,"subtype":"success","structured_output":{"card":{"done":["Cached the login query"],"decisions":[],"open":[],"next_step":"Measure it.","uncertain":[]},"new_items":[{"title":"Cache the login query","type":"feature","status":"done-unverified","problem":"Slow.","solution":"Cached.","files":[],"aliases":[],"commit":"","verify":"cargo test login","evidence":["cache the login query"]}],"item_updates":[],"new_decisions":[],"rules":[],"state":null}}"#;
 
 struct Env {
     _tmp: tempfile::TempDir,
@@ -258,7 +258,7 @@ fn a_run_stops_at_its_limit_and_says_how_many_wait() {
     std::thread::sleep(std::time::Duration::from_millis(1100));
     let work = env.root.join("work/app");
     for id in ["11111111-a", "22222222-b", "33333333-c"] {
-        env.transcript(id, &work, &["a", "b"]);
+        env.transcript(id, &work, &["cache the login query", "b"]);
     }
     let events = env.sweep(&["--max", "2"]);
     assert_eq!(sessions(&events).len(), 2);
@@ -274,6 +274,7 @@ fn a_run_stops_at_its_limit_and_says_how_many_wait() {
     assert_eq!(run["sessions"].as_array().unwrap().len(), 2);
     assert_eq!(run["sessions"][0]["status"], "ok");
     assert_eq!(run["sessions"][0]["items_added"], 1);
+    assert_eq!(run["sessions"][0]["left_out"], 0);
     assert!(
         run["sessions"][0]["card"]
             .as_str()
@@ -534,7 +535,7 @@ fn due_runs_follow_the_schedule() {
     });
     let work = env.root.join("work/app");
     for id in ["11111111-a", "22222222-b", "33333333-c"] {
-        env.transcript(id, &work, &["a", "b"]);
+        env.transcript(id, &work, &["cache the login query", "b"]);
     }
     let run = env.sweep(&["--due"]);
     assert_eq!(sessions(&run).len(), 2, "{run:?}");

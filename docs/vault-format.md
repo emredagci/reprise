@@ -75,6 +75,12 @@ the format (the PostToolUse hook; not `.sbrain/`), each in a commit of its own, 
 syncing is the user's push. A commit git refuses (another git holds the index, a hook says no) waits in
 the job ledger and every later sbrain command tries it again, so nothing sbrain wrote stays uncommitted.
 
+Nothing that looks like a secret is committed: every record sbrain writes, and every vault file an agent
+edits (before the PostToolUse hook commits it), has keys and tokens of known shapes, private key blocks,
+JSON Web Tokens, passwords in URLs, bearer tokens and values assigned to names like `API_KEY`, `password`
+or `clientSecret` replaced with `[redacted]`. `sbrain doctor` reports any file in the vault that still holds
+one, such as a file written another way; once committed it stays in the history, so rotate it.
+
 ## `.sbrain/vault.toml`
 
 ```toml
@@ -164,7 +170,8 @@ related: [api-0009, api-D-0004]
 captured_during: checkout screen work # what was going on when it came up
 ```
 
-Body: `## Problem`, `## Cause`, `## Solution`, `## Verification`, `## Notes`.
+Body: `## Problem`, `## Cause`, `## Solution`, `## Verification`, `## Notes`. An item the sweep wrote also
+has `## Evidence`: the quotes from the session it was written from, one `>` line each.
 
 Status rules:
 - Work the user sets aside for later → `inbox`; the agent goes back to what it was doing.
@@ -187,7 +194,7 @@ commit:                               # HEAD when the decision was taken
 related: [api-0031]
 ```
 
-Body: `## Context`, `## Decision`, `## Why`, `## Alternatives`.
+Body: `## Context`, `## Decision`, `## Why`, `## Alternatives`, and `## Evidence` when the sweep wrote it.
 
 ### Handoff card (`sessions/<YYYY-MM-DD-HHMM>-<session8>.md`)
 
@@ -299,7 +306,11 @@ the engine CLI. Claude Code keeps `<config dir>/projects/<folder>/<session>.json
    changes to the project's open items, decisions, proposed rules (`proposed-rules.md`, not in effect),
    `state.md` while it is still the template, and the session's card with `source: transcript`. An answer
    that does not pass the checks writes nothing. In the transcript it reads, the text of tools and of the
-   assistant is indented, so none of it can pass for the user's own words.
+   assistant is indented, so none of it can pass for the user's own words, and secrets are masked.
+   Every item, item change, decision and rule comes with quotes copied from the transcript; sbrain looks
+   for each one (ignoring case, spacing and typographic quote marks, `…` for words left out) and keeps
+   the quotes it finds in the record's `## Evidence`. One with no quote found is not written, and the
+   card lists it under Uncertain. A rule must quote the user's own messages.
 6. When the vault is a git repository, the files written for a session are committed together.
 
 At most `max_per_run` sessions are distilled in one run.

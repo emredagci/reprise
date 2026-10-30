@@ -331,6 +331,7 @@ enum HookEvent {
     Prompt,
     SessionEnd,
     ToolUse,
+    PreCompact,
 }
 
 #[derive(Subcommand)]
@@ -646,6 +647,10 @@ fn hook(event: HookEvent, vault: Option<PathBuf>) {
             "session-end",
         ),
         HookEvent::ToolUse => (sbrain_clients::claude::hooks::Event::ToolUse, "tool-use"),
+        HookEvent::PreCompact => (
+            sbrain_clients::claude::hooks::Event::PreCompact,
+            "pre-compact",
+        ),
     };
     let started = std::time::Instant::now();
     let vault = open_vault(vault).ok();

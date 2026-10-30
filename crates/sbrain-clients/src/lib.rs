@@ -102,6 +102,17 @@ pub struct Digest {
     /// The session, condensed for distilling: the user's messages in full, the assistant's text,
     /// one line per tool call, errors and the results of commands like tests and commits.
     pub text: String,
+    /// Every message the user wrote, in order, as `text` has them (secrets masked); kept whole even
+    /// when `text` leaves out the middle of a long session.
+    pub user_messages: Vec<UserMessage>,
+}
+
+/// One message the user wrote.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UserMessage {
+    /// `YYYY-MM-DD HH:MM` local time.
+    pub at: String,
+    pub text: String,
 }
 
 /// One distilling run of the client's CLI: no tools, no hooks or user settings, no saved session;

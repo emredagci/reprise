@@ -29,6 +29,10 @@ current project's context from it; this file says how to read and keep it.
   start says some are waiting, tell the user; run `sbrain rule accept <id>` only for the ones they agree
   to (it asks them first). Never copy one into `rules.md` or `gotchas.md` yourself.
 - Keep `state.md` current and short (about 2000 characters): what works, what does not, how to run it.
+- Never write keys, tokens or passwords into the vault: it is pushed to a remote. Name where a secret lives
+  (`the OPENROUTER_API_KEY variable`), not its value. sbrain masks what looks like one as `[redacted]`.
+- After a compaction, session start hands back the user's own messages from before it under "Kept through
+  compaction"; what they ask still holds.
 - Before a session ends or the context fills up, write a handoff card with `sbrain session write --session
   <id> --done … --open … --next … --touched <ids>` (session start gives the command), and fold what changed
   into `state.md`, items and decisions.
