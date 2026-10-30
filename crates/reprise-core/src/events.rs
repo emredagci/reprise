@@ -91,8 +91,8 @@ pub fn kind(text: &str) -> Result<String> {
     Ok(k)
 }
 
-/// Adds an event in its place in time. One already written (the same day or span and the same
-/// words) is not added again; `false` then. Returns the file relative to the vault.
+/// Adds an event in its place in time. One already written is not added again (`same_event`);
+/// `false` then. Returns the file relative to the vault.
 pub fn add(vault: &Vault, project: &str, event: Event) -> Result<(bool, PathBuf)> {
     let what = event.what.split_whitespace().collect::<Vec<_>>().join(" ");
     if what.is_empty() {
@@ -118,10 +118,7 @@ pub fn add(vault: &Vault, project: &str, event: Event) -> Result<(bool, PathBuf)
         .unwrap_or(&path)
         .to_path_buf();
     let mut events = read(vault, project)?;
-    if events
-        .iter()
-        .any(|e| e.when == event.when && e.what.eq_ignore_ascii_case(&event.what))
-    {
+    if events.iter().any(|e| same_event(e, &event)) {
         return Ok((false, rel));
     }
     let at = events.partition_point(|e| e.when.start <= event.when.start);
@@ -129,6 +126,39 @@ pub fn add(vault: &Vault, project: &str, event: Event) -> Result<(bool, PathBuf)
     let rows: Vec<Vec<String>> = events.iter().map(Event::row).collect();
     crate::scaffold::write(&path, &crate::table::render(HEAD, &COLUMNS, &rows))?;
     Ok((true, rel))
+}
+
+/// Whether two events are one told twice: the same kind, days that overlap, the same numbers (so
+/// "Released 0.1.0" and "Released 0.2.0" stay apart), and most words of the shorter one in the other.
+pub fn same_event(a: &Event, b: &Event) -> bool {
+    if a.kind != b.kind || a.when.start > b.when.end || b.when.start > a.when.end {
+        return false;
+    }
+    let numbers = |t: &str| -> std::collections::BTreeSet<String> {
+        t.split_whitespace()
+            .map(|w| {
+                w.trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                    .to_owned()
+            })
+            .filter(|w| w.chars().any(|c| c.is_ascii_digit()))
+            .collect()
+    };
+    let words = |t: &str| -> std::collections::BTreeSet<String> {
+        crate::text::tokens(t)
+            .into_iter()
+            .filter(|w| w.chars().count() >= 3 && !w.chars().all(|c| c.is_ascii_digit()))
+            .collect()
+    };
+    let (na, nb) = (numbers(&a.what), numbers(&b.what));
+    if !na.is_empty() && !nb.is_empty() && na.is_disjoint(&nb) {
+        return false;
+    }
+    let (wa, wb) = (words(&a.what), words(&b.what));
+    let shorter = wa.len().min(wb.len());
+    if shorter == 0 {
+        return !na.is_empty() && na == nb;
+    }
+    wa.intersection(&wb).count() * 5 >= shorter * 3
 }
 
 /// How far `when` is from `today`, in words: "today", "3 days ago", "in 2 days", "20–26 days ago".
@@ -342,6 +372,39 @@ mod tests {
         assert_eq!(events[1].kind, "release");
         assert!(add(&vault, "app", ev("2026-10-01", "x", "x", "maybe")).is_err());
         assert!(add(&vault, "app", ev("2026-10-01", "x", "two words", "done")).is_err());
+    }
+
+    #[test]
+    fn an_event_told_twice_is_one() {
+        let one = ev("2026-10-27", "0.1.0 yayımlandı", "release", "done");
+        let again = ev(
+            "2026-10-27",
+            "reprise 0.1.0 yayımlandı ve Homebrew tap'i güncellendi",
+            "release",
+            "done",
+        );
+        assert!(same_event(&one, &again));
+        assert!(same_event(
+            &ev("2026-10", "Shipped login", "release", "done"),
+            &ev("2026-10-12", "shipped the login", "release", "done")
+        ));
+        let other = ev("2026-10-27", "Released 0.2.0", "release", "done");
+        assert!(!same_event(
+            &ev("2026-10-27", "Released 0.1.0", "release", "done"),
+            &other
+        ));
+        assert!(!same_event(
+            &one,
+            &ev("2026-10-27", "0.1.0 yayımlandı", "deploy", "done")
+        ));
+        assert!(!same_event(
+            &one,
+            &ev("2026-11-03", "0.1.0 yayımlandı", "release", "done")
+        ));
+        assert!(!same_event(
+            &ev("2026-10-27", "Staging deploy", "deploy", "done"),
+            &ev("2026-10-27", "Production deploy", "deploy", "done")
+        ));
     }
 
     #[test]
