@@ -39,6 +39,7 @@ pub mod stale;
 pub mod store;
 pub mod sweep;
 pub mod table;
+pub mod vectors;
 pub mod verify;
 
 pub use access::{Access, AccessMode};

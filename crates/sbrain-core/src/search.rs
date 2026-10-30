@@ -35,6 +35,9 @@ pub struct SearchResult {
     /// Records one link away from the hits, not hits themselves; `matched` says through which.
     pub linked: Vec<Hit>,
     pub terms_without_any_match: Vec<String>,
+    /// Records most like the question by meaning (`vectors`), when asked for.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub semantic: Vec<Hit>,
 }
 
 /// What a record links to: its id, its `related` ids and its text, to find links both ways.
@@ -155,6 +158,46 @@ pub fn search(
         .map(|(t, _)| t)
         .collect();
     Ok(result)
+}
+
+/// Every record searched, as a hit with no score, with the text that stands for it: its id, title,
+/// aliases and body.
+pub fn all_records(vault: &Vault, projects: &[String]) -> Result<Vec<(Hit, String)>> {
+    let mut out = Vec::new();
+    for (kind, project, path) in corpus(vault, projects) {
+        let record = Record::read(&path)?;
+        let id = record
+            .first_truthy(&["id", "session"])
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                path.file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            });
+        let text = format!(
+            "{}\n{}\n{}",
+            record.text("title"),
+            record
+                .get("aliases")
+                .map(|v| v.joined())
+                .unwrap_or_default(),
+            record.body
+        );
+        out.push((
+            Hit {
+                kind,
+                project,
+                id,
+                title: record.text("title").to_owned(),
+                status: record.text("status").to_owned(),
+                path,
+                score: 0,
+                matched: Vec::new(),
+            },
+            text,
+        ));
+    }
+    Ok(out)
 }
 
 /// Records one link away from `hits` that are not hits: named in a hit's `related`, naming a hit in

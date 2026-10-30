@@ -112,6 +112,14 @@ enum Command {
         projects: Vec<String>,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        /// Also rank records by meaning, through the embeddings service (`sbrain embeddings set`).
+        #[arg(long)]
+        semantic: bool,
+    },
+    /// The embeddings service meaning search uses (`sbrain search --semantic`).
+    Embeddings {
+        #[command(subcommand)]
+        action: Option<EmbeddingsAction>,
     },
     /// From a day on, session start leaves out the project's past: facts that held before it, earlier
     /// events, and work not touched since. Nothing is deleted; `--undo` cancels the latest reset.
@@ -457,6 +465,23 @@ enum FactAction {
 }
 
 #[derive(Subcommand)]
+enum EmbeddingsAction {
+    /// Any OpenAI-compatible embeddings endpoint: a local Ollama
+    /// (`http://localhost:11434/v1/embeddings`), OpenRouter, OpenAI.
+    Set {
+        #[arg(long)]
+        url: String,
+        #[arg(long)]
+        model: String,
+        /// The variable that holds the service's key, when it needs one.
+        #[arg(long)]
+        key_env: Option<String>,
+    },
+    /// Turns meaning search off.
+    Off,
+}
+
+#[derive(Subcommand)]
 enum EventAction {
     /// Writes an event in its place in time.
     Add {
@@ -570,6 +595,7 @@ fn main() -> Result<()> {
             queries,
             projects,
             limit,
+            semantic,
         } => {
             let vault = open_vault(cli.vault)?;
             let projects = if projects.is_empty() {
@@ -577,9 +603,45 @@ fn main() -> Result<()> {
             } else {
                 projects
             };
-            print_json(&sbrain_core::search::search(
-                &vault, &projects, &queries, limit,
-            )?)
+            let mut result = sbrain_core::search::search(&vault, &projects, &queries, limit)?;
+            if semantic {
+                let config = Settings::load()?.embeddings.context(
+                    "no embeddings service: `sbrain embeddings set --url <endpoint> --model <name>`",
+                )?;
+                let embed = |t: &[String]| sbrain_core::vectors::embed(&config, t);
+                result.semantic = sbrain_core::vectors::semantic(
+                    &vault,
+                    &projects,
+                    &queries.join(" "),
+                    limit,
+                    &config.model,
+                    &embed,
+                )?;
+            }
+            print_json(&result)
+        }
+        Command::Embeddings { action } => {
+            let mut settings = Settings::load()?;
+            match action {
+                None => {}
+                Some(EmbeddingsAction::Set {
+                    url,
+                    model,
+                    key_env,
+                }) => {
+                    settings.embeddings = Some(sbrain_core::vectors::Embeddings {
+                        url,
+                        model,
+                        key_env,
+                    });
+                    settings.save()?;
+                }
+                Some(EmbeddingsAction::Off) => {
+                    settings.embeddings = None;
+                    settings.save()?;
+                }
+            }
+            print_json(&settings.embeddings)
         }
         Command::Reset {
             project,
