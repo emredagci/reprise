@@ -56,6 +56,13 @@ lone "yes" or "ok" shows nothing.
 - sbrain checks every quote against the session. A record with no quote it finds is not written, and
   the card says so: leave out what you cannot back with the session's words.
 
+## Confidence
+
+Every record you return also carries `confidence`, from 0 to 1: how sure you are that the session shows it
+as you wrote it. Be calibrated, not polite: 0.9 when the user said it plainly, 0.5 when you are reading it
+between the lines. sbrain writes a record only from 0.6, a rule only from 0.8, and lists the rest on the
+card.
+
 ## Limits
 
 - Do not invent what is not in the session. Put guesses under `card.uncertain`.

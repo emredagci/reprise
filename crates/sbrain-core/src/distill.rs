@@ -26,6 +26,9 @@ const MAX_UPDATES: usize = 20;
 const MAX_DECISIONS: usize = 6;
 const MAX_RULES: usize = 6;
 const MAX_FACTS: usize = 12;
+/// The confidence a record needs to be written; a rule, which reaches every later session, more.
+const MIN_CONFIDENCE: f64 = 0.6;
+const MIN_RULE_CONFIDENCE: f64 = 0.8;
 const MAX_EVENTS: usize = 10;
 /// Characters kept of a title, a rule and each `state.md` section.
 const TITLE_LIMIT: usize = 200;
@@ -56,7 +59,7 @@ pub struct Session<'a> {
 }
 
 /// The engine's answer (`templates/distill/schema.json`).
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Distilled {
     pub card: CardOut,
@@ -69,7 +72,7 @@ pub struct Distilled {
     pub state: Option<StateOut>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FactOut {
     pub key: String,
@@ -77,9 +80,11 @@ pub struct FactOut {
     /// The date as the session said it; empty for the day it was said.
     pub from: String,
     pub evidence: Vec<String>,
+    /// How sure the engine is, 0 to 1.
+    pub confidence: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventOut {
     pub what: String,
@@ -88,9 +93,11 @@ pub struct EventOut {
     /// The date as the session said it; empty for the day it was said.
     pub when: String,
     pub evidence: Vec<String>,
+    /// How sure the engine is, 0 to 1.
+    pub confidence: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CardOut {
     pub done: Vec<String>,
@@ -100,7 +107,7 @@ pub struct CardOut {
     pub uncertain: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewItemOut {
     pub title: String,
@@ -115,9 +122,11 @@ pub struct NewItemOut {
     pub verify: String,
     /// Quotes from the digest that show the work.
     pub evidence: Vec<String>,
+    /// How sure the engine is, 0 to 1.
+    pub confidence: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemUpdate {
     pub id: String,
@@ -128,9 +137,11 @@ pub struct ItemUpdate {
     pub files: Vec<String>,
     pub note: String,
     pub evidence: Vec<String>,
+    /// How sure the engine is, 0 to 1.
+    pub confidence: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NewDecisionOut {
     pub title: String,
@@ -140,9 +151,11 @@ pub struct NewDecisionOut {
     pub alternatives: String,
     pub related: Vec<String>,
     pub evidence: Vec<String>,
+    /// How sure the engine is, 0 to 1.
+    pub confidence: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleOut {
     /// `project` or `general`.
@@ -150,9 +163,11 @@ pub struct RuleOut {
     pub rule: String,
     /// Quotes from the user's own messages.
     pub evidence: Vec<String>,
+    /// How sure the engine is, 0 to 1.
+    pub confidence: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StateOut {
     pub what: String,
@@ -335,6 +350,11 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
                 .push(format!("item \"{}\"", one_line(&item.title)));
             continue;
         }
+        if let Some(why) = unsure(item.confidence, MIN_CONFIDENCE) {
+            out.left_out
+                .push(format!("item \"{}\": {why}", one_line(&item.title)));
+            continue;
+        }
         let new = NewItem {
             title: crate::text::clip(item.title.trim(), TITLE_LIMIT),
             kind: item.kind.parse().expect("checked"),
@@ -371,6 +391,10 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
     for update in &d.item_updates {
         if evidence::supported(&update.evidence, &everything).is_empty() {
             out.left_out.push(format!("change to {}", update.id));
+            continue;
+        }
+        if let Some(why) = unsure(update.confidence, MIN_CONFIDENCE) {
+            out.left_out.push(format!("change to {}: {why}", update.id));
             continue;
         }
         let mut changes = Vec::new();
@@ -416,6 +440,11 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
                 .push(format!("decision \"{}\"", one_line(&decision.title)));
             continue;
         }
+        if let Some(why) = unsure(decision.confidence, MIN_CONFIDENCE) {
+            out.left_out
+                .push(format!("decision \"{}\": {why}", one_line(&decision.title)));
+            continue;
+        }
         let new = NewDecision {
             title: crate::text::clip(decision.title.trim(), TITLE_LIMIT),
             context: decision.context.clone(),
@@ -450,6 +479,10 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
             out.left_out.push(format!("rule \"{text}\""));
             continue;
         }
+        if let Some(why) = unsure(rule.confidence, MIN_RULE_CONFIDENCE) {
+            out.left_out.push(format!("rule \"{text}\": {why}"));
+            continue;
+        }
         let project = (rule.scope == "project").then_some(s.project);
         if let Some(path) = store::propose_rule(vault, project, &text, s.id, today)? {
             out.rules_proposed += 1;
@@ -465,6 +498,10 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
         let quotes = evidence::supported(&fact.evidence, &everything);
         if quotes.is_empty() {
             out.left_out.push(label);
+            continue;
+        }
+        if let Some(why) = unsure(fact.confidence, MIN_CONFIDENCE) {
+            out.left_out.push(format!("{label}: {why}"));
             continue;
         }
         let said = said_on(s.digest, &quotes).unwrap_or(session_day);
@@ -504,6 +541,10 @@ pub fn apply(vault: &Vault, s: &Session, d: &Distilled, today: NaiveDate) -> Res
         let quotes = evidence::supported(&event.evidence, &everything);
         if quotes.is_empty() {
             out.left_out.push(label);
+            continue;
+        }
+        if let Some(why) = unsure(event.confidence, MIN_CONFIDENCE) {
+            out.left_out.push(format!("{label}: {why}"));
             continue;
         }
         let said = said_on(s.digest, &quotes).unwrap_or(session_day);
@@ -666,6 +707,12 @@ fn known_ids(vault: &Vault) -> BTreeSet<String> {
     items.chain(decisions).collect()
 }
 
+/// Why a record with this confidence is not written; `None` when it is sure enough.
+fn unsure(confidence: f64, min: f64) -> Option<String> {
+    (!(confidence.is_finite() && confidence >= min))
+        .then(|| format!("confidence {confidence:.2} is under {min}"))
+}
+
 /// The date of `YYYY-MM-DD HH:MM`.
 fn day_of(time: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(crate::text::take_chars(time, 10), "%Y-%m-%d").ok()
@@ -790,7 +837,8 @@ mod tests {
                 "aliases": ["login cache"],
                 "commit": "abc1234",
                 "verify": "cargo test login",
-                "evidence": ["I cached the login query per request."]
+                "evidence": ["I cached the login query per request."],
+                "confidence": 0.9
             }],
             "item_updates": [{
                 "id": "app-0001",
@@ -799,7 +847,8 @@ mod tests {
                 "verify": "",
                 "files": ["src/login.rs"],
                 "note": "Half of it is fixed by the cache.",
-                "evidence": ["cached the login query … Half of the slowness is gone"]
+                "evidence": ["cached the login query … Half of the slowness is gone"],
+                "confidence": 0.8
             }],
             "new_decisions": [{
                 "title": "Cache per request, not globally",
@@ -808,25 +857,29 @@ mod tests {
                 "why": "No invalidation needed.",
                 "alternatives": "A global cache with TTL.",
                 "related": ["app-0001", "nope-9999"],
-                "evidence": ["Use a per-request cache, not a global one."]
+                "evidence": ["Use a per-request cache, not a global one."],
+                "confidence": 0.95
             }],
             "rules": [{
                 "scope": "project",
                 "rule": "Measure before caching.",
-                "evidence": ["Measure before caching anything"]
+                "evidence": ["Measure before caching anything"],
+                "confidence": 0.85
             }],
             "facts": [{
                 "key": "API port",
                 "value": "9090",
                 "from": "yesterday",
-                "evidence": ["moved the API to port 9090 yesterday"]
+                "evidence": ["moved the API to port 9090 yesterday"],
+                "confidence": 0.9
             }],
             "events": [{
                 "what": "Released 0.3.0",
                 "kind": "release",
                 "status": "done",
                 "when": "last Tuesday",
-                "evidence": ["released 0.3.0 last Tuesday"]
+                "evidence": ["released 0.3.0 last Tuesday"],
+                "confidence": 0.9
             }],
             "state": {
                 "what": "A web app.",
@@ -1050,6 +1103,26 @@ mod tests {
                 .unwrap(),
             "inbox",
             "the unbacked change is not made"
+        );
+    }
+
+    #[test]
+    fn records_the_engine_is_unsure_of_are_left_out() {
+        let (_tmp, vault) = vault();
+        let mut a = answer();
+        a["new_items"][0]["confidence"] = 0.3.into();
+        a["rules"][0]["confidence"] = 0.7.into();
+        let d = Distilled::from_json(a).unwrap();
+        let out = apply(&vault, &session(&digest()), &d, day("2026-10-25")).unwrap();
+        assert!(out.items_added.is_empty());
+        assert_eq!(out.rules_proposed, 0, "a rule needs 0.8");
+        assert_eq!(out.decisions_added.len(), 1);
+        assert_eq!(
+            out.left_out,
+            [
+                "item \"Cache the login query\": confidence 0.30 is under 0.6",
+                "rule \"Measure before caching.\": confidence 0.70 is under 0.8"
+            ]
         );
     }
 
