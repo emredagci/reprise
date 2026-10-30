@@ -18,6 +18,7 @@ pub mod graph;
 pub mod import;
 pub mod overview;
 pub mod project;
+pub mod pulse;
 pub mod record;
 pub mod safe;
 pub mod scaffold;
