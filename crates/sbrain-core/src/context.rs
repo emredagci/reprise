@@ -176,6 +176,12 @@ pub fn session_start(
         if let Some(gotchas) = body(&root.join("gotchas.md"), 800)? {
             parts.push(format!("## {p} gotchas\n{gotchas}"));
         }
+        if let Some(facts) = facts_block(vault, p) {
+            parts.push(facts);
+        }
+        if let Some(events) = events_block(vault, p, today) {
+            parts.push(events);
+        }
         let lines = open_work(vault, p, today)?;
         if !lines.is_empty() {
             parts.push(format!("## Open work\n{}", lines.join("\n")));
@@ -209,6 +215,72 @@ pub fn session_start(
         guide.display()
     ));
     Ok(clip(&parts.join("\n\n"), SESSION_START_BUDGET))
+}
+
+/// Characters of the facts and of the events in the session-start block.
+const FACTS_LIMIT: usize = 600;
+const EVENTS_LIMIT: usize = 500;
+/// Events that happened shown at session start, the latest ones.
+const EVENTS_SHOWN: usize = 4;
+
+/// The facts that hold now, the project's and those about no single project.
+fn facts_block(vault: &Vault, project: &str) -> Option<String> {
+    let mut lines = Vec::new();
+    for scope in [Some(project), None] {
+        let facts = crate::facts::read(vault, scope).unwrap_or_default();
+        for f in crate::facts::current(&facts) {
+            lines.push(format!(
+                "- {}: {} (since {})",
+                f.key,
+                f.value,
+                f.from.display()
+            ));
+        }
+    }
+    (!lines.is_empty()).then(|| {
+        format!(
+            "## Facts now\n{}\nOlder values: `sbrain fact list --all`.",
+            clip(&lines.join("\n"), FACTS_LIMIT)
+        )
+    })
+}
+
+/// The latest events and the next planned ones, with how long ago, computed for today.
+fn events_block(vault: &Vault, project: &str, today: NaiveDate) -> Option<String> {
+    let events = crate::events::read(vault, project).ok()?;
+    let done: Vec<&crate::events::Event> = events
+        .iter()
+        .filter(|e| e.status == "done" && e.when.start <= today)
+        .collect();
+    let planned = events
+        .iter()
+        .filter(|e| e.status == "planned" && e.when.end >= today)
+        .take(2);
+    let lines: Vec<String> = done[done.len().saturating_sub(EVENTS_SHOWN)..]
+        .iter()
+        .copied()
+        .chain(planned)
+        .map(|e| {
+            let status = if e.status == "done" {
+                String::new()
+            } else {
+                format!(" [{}]", e.status)
+            };
+            format!(
+                "- {} · {} · {}{status} ({})",
+                e.when.display(),
+                e.kind,
+                e.what,
+                crate::events::ago(&e.when, today)
+            )
+        })
+        .collect();
+    (!lines.is_empty()).then(|| {
+        format!(
+            "## Recent events\n{}\nCounts, gaps and dates: `sbrain timeline`; quote it, do not work dates out.",
+            clip(&lines.join("\n"), EVENTS_LIMIT)
+        )
+    })
 }
 
 /// Rules the sweep proposed for this project or for every project, waiting for the user: only their
@@ -541,6 +613,41 @@ mod tests {
                 .unwrap()
                 .contains("session write"),
             "an id that is not plain is left out"
+        );
+    }
+
+    #[test]
+    fn facts_and_events_come_with_their_dates_worked_out() {
+        let env = Env::new();
+        let repo = env.repo("code/api", None);
+        env.write(
+            "projects/api/facts.md",
+            "| Key | Value | From | To | Source | Noted |\n| --- | --- | --- | --- | --- | --- |\n\
+             | port | 8080 | 2026-01 | 2026-10-01 |  | 2026-10-01 |\n\
+             | port | 9090 | 2026-10-01 |  |  | 2026-10-01 |\n",
+        );
+        env.write(
+            "projects/api/events.md",
+            "| When | What | Kind | Status | Said | Source |\n| --- | --- | --- | --- | --- | --- |\n\
+             | 2026-10-20 | Shipped login | release | done | 2026-10-20 |  |\n\
+             | 2026-11-02 | Ship billing | release | planned | 2026-10-20 |  |\n",
+        );
+        let text = env.start(&repo);
+        assert!(
+            text.contains("## Facts now\n- port: 9090 (since 2026-10-01)\n"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("8080"),
+            "a closed value is not current: {text}"
+        );
+        assert!(
+            text.contains("- 2026-10-20 · release · Shipped login (5 days ago)"),
+            "{text}"
+        );
+        assert!(
+            text.contains("- 2026-11-02 · release · Ship billing [planned] (in 8 days)"),
+            "{text}"
         );
     }
 
