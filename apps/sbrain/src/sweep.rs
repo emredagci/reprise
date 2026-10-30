@@ -164,11 +164,16 @@ impl Reporter {
                 };
                 let detail = match (&o.applied, o.reason.is_empty()) {
                     (Some(a), _) => format!(
-                        " → {} (+{} items, {} updated, +{} decisions)",
+                        " → {} (+{} items, {} updated, +{} decisions{})",
                         a.card.display(),
                         a.items_added.len(),
                         a.items_updated.len(),
-                        a.decisions_added.len()
+                        a.decisions_added.len(),
+                        if a.left_out.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", {} left out without a quote", a.left_out.len())
+                        }
                     ),
                     (None, false) => format!(": {}", o.reason),
                     (None, true) => String::new(),
@@ -469,6 +474,7 @@ fn run_session(o: &Outcome) -> sweep::RunSession {
         decisions_added: applied.map_or(0, |a| a.decisions_added.len()),
         rules_proposed: applied.map_or(0, |a| a.rules_proposed),
         state_filled: applied.is_some_and(|a| a.state_filled),
+        left_out: applied.map_or(0, |a| a.left_out.len()),
     }
 }
 
@@ -550,6 +556,12 @@ impl Run<'_> {
             Ok(created) => created,
             Err(e) => return Outcome::new(session, "failed", &project, e.to_string()),
         };
+        let user_text = digest
+            .user_messages
+            .iter()
+            .map(|m| m.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         let s = distill::Session {
             id: session,
             project: &project,
@@ -561,6 +573,7 @@ impl Run<'_> {
                 &digest.last
             },
             digest: &digest.text,
+            user_text: &user_text,
         };
         let input = distill::input(self.vault, &s);
         let run = DistillRun {

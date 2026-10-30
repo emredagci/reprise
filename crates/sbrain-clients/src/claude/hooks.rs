@@ -1,7 +1,9 @@
 //! Claude Code hooks: SessionStart and UserPromptSubmit read a JSON payload on stdin and answer with
-//! `additionalContext`; SessionEnd answers nothing and notes the session as ended, so the sweep distills it
-//! without waiting for it to settle; PostToolUse checks a record the agent just wrote to the vault and, when
-//! something is wrong with it, tells the agent what to fix; a file that is fine is committed.
+//! `additionalContext` (a session start after a compaction also gets the user's messages PreCompact
+//! kept, `compact`); PreCompact and SessionEnd answer nothing and notes the session as ended, so the sweep distills it
+//! without waiting for it to settle; PostToolUse masks secrets in a file the agent just wrote to the
+//! vault and checks the record, tells the agent what was masked or what to fix, and commits a file that
+//! is fine.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -20,6 +22,7 @@ pub enum Event {
     Prompt,
     SessionEnd,
     ToolUse,
+    PreCompact,
 }
 
 impl Event {
@@ -29,6 +32,7 @@ impl Event {
             Self::Prompt => "UserPromptSubmit",
             Self::SessionEnd => "SessionEnd",
             Self::ToolUse => "PostToolUse",
+            Self::PreCompact => "PreCompact",
         }
     }
 }
@@ -79,26 +83,63 @@ pub fn run(
                 return Ok(None);
             };
             let written = written.canonicalize().unwrap_or(written);
-            let problems = sbrain_core::doctor::record_problems(vault, &written);
-            if problems.is_empty() {
-                commit_edit(vault, &written);
-                return Ok(None);
-            }
             let rel = written
                 .strip_prefix(vault.root())
                 .unwrap_or(&written)
                 .display()
                 .to_string();
-            let reason = format!(
-                "sbrain: {rel} does not follow the vault format. Fix it now:\n- {}",
-                problems.join("\n- ")
-            );
+            // Masked before anything is committed: the vault is pushed to a remote.
+            let masked = sbrain_core::doctor::mask_secrets(vault, &written).unwrap_or_default();
+            let problems = sbrain_core::doctor::record_problems(vault, &written);
+            if problems.is_empty() {
+                commit_edit(vault, &written);
+            }
+            let mut notes = Vec::new();
+            if !masked.is_empty() {
+                notes.push(format!(
+                    "sbrain: {rel} held what looks like a secret ({}); it was replaced with {}. \
+                     Never write keys, tokens or passwords into the vault; tell the user to rotate it if it was real.",
+                    masked.join(", "),
+                    sbrain_core::secret::MASK
+                ));
+            }
+            if !problems.is_empty() {
+                notes.push(format!(
+                    "sbrain: {rel} does not follow the vault format. Fix it now:\n- {}",
+                    problems.join("\n- ")
+                ));
+            }
+            if notes.is_empty() {
+                return Ok(None);
+            }
+            let reason = notes.join("\n\n");
             // `block` after a tool ran stops nothing: Claude Code hands the reason to the agent.
             let s = |v: &str| serde_json::to_string(v).expect("strings always serialize");
             return Ok(Some(format!(
                 "{{\"decision\": \"block\", \"reason\": {}}}",
                 s(&reason)
             )));
+        }
+        Event::PreCompact => {
+            if let (Some(session), Some(transcript)) =
+                (field("session_id"), field("transcript_path"))
+            {
+                let path = Path::new(transcript);
+                let digest = super::transcript::digest(path).map_err(|e| match e {
+                    crate::Error::Core(e) => e,
+                    other => sbrain_core::Error::Io {
+                        path: path.to_path_buf(),
+                        source: std::io::Error::other(other.to_string()),
+                    },
+                })?;
+                let messages: Vec<(&str, &str)> = digest
+                    .user_messages
+                    .iter()
+                    .map(|m| (m.at.as_str(), m.text.as_str()))
+                    .collect();
+                sbrain_core::compact::keep(vault, session, &messages)?;
+            }
+            None
         }
         Event::SessionEnd => {
             if let Some(session) = field("session_id") {
@@ -108,13 +149,15 @@ pub fn run(
         }
         Event::SessionStart => {
             refresh_staleness(vault);
-            Some(session_start(
-                vault,
-                access,
-                &cwd,
-                field("session_id"),
-                today,
-            )?)
+            let mut text = session_start(vault, access, &cwd, field("session_id"), today)?;
+            if field("source") == Some("compact")
+                && let Some(kept) =
+                    field("session_id").and_then(|s| sbrain_core::compact::kept_block(vault, s))
+            {
+                text.push_str("\n\n");
+                text.push_str(&kept);
+            }
+            Some(text)
         }
         Event::Prompt => {
             let mut parts = Vec::new();

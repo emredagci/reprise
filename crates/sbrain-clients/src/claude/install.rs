@@ -1,6 +1,6 @@
 //! Connecting sbrain to Claude Code. Everything goes through the `sbrain` CLI:
 //!
-//! 1. SessionStart, UserPromptSubmit, SessionEnd and PostToolUse (Edit, Write, MultiEdit) hooks in `settings.json` run
+//! 1. SessionStart, UserPromptSubmit, SessionEnd, PostToolUse (Edit, Write, MultiEdit) and PreCompact hooks in `settings.json` run
 //!    `sbrain hook …`,
 //! 2. `PERMISSIONS` in `permissions.allow`: agents read the memory and write records without a prompt
 //!    each time; everything else sbrain does (choosing the vault and folders, connecting, the sweep and
@@ -57,11 +57,12 @@ pub const PERMISSIONS: [&str; 21] = [
 ];
 const HOOK_TIMEOUT: u64 = 10;
 /// Event, `sbrain hook` argument, and the tools it is limited to (Claude Code's `matcher`).
-const EVENTS: [(&str, &str, Option<&str>); 4] = [
+const EVENTS: [(&str, &str, Option<&str>); 5] = [
     ("SessionStart", "session-start", None),
     ("UserPromptSubmit", "prompt", None),
     ("SessionEnd", "session-end", None),
     ("PostToolUse", "tool-use", Some("Edit|Write|MultiEdit")),
+    ("PreCompact", "pre-compact", None),
 ];
 
 /// Where connecting writes. Tests point these at temporary folders.

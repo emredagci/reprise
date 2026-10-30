@@ -71,6 +71,9 @@ pub struct RunSession {
     pub rules_proposed: usize,
     #[serde(default)]
     pub state_filled: bool,
+    /// Records the answer had but no quote from the session backed.
+    #[serde(default)]
+    pub left_out: usize,
 }
 
 impl Run {

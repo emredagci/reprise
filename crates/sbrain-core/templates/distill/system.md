@@ -33,6 +33,20 @@ types stay exactly as in the schema.
   choices that are not in `new_decisions`. If a card already exists, keep what it says and add only what
   is missing.
 
+## Evidence
+
+Every new item, item update, new decision and rule carries `evidence`: one to three quotes copied
+character for character from the digest that show it happened. Copy the words exactly as they are, in
+their language; do not translate, fix or shorten them inside a quote. To leave words out in the middle,
+write `…`; each part must still be in the digest, in that order. A quote needs at least a few words: a
+lone "yes" or "ok" shows nothing.
+
+- A rule quotes the user's own words, from under a `## User` heading: the correction itself.
+- A decision the user approved with a short reply quotes the choice as it was put to them, and the
+  reply only alongside it.
+- sbrain checks every quote against the session. A record with no quote it finds is not written, and
+  the card says so: leave out what you cannot back with the session's words.
+
 ## Limits
 
 - Do not invent what is not in the session. Put guesses under `card.uncertain`.

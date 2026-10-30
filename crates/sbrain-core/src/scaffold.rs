@@ -157,9 +157,9 @@ fn create_dir(path: &Path) -> Result<()> {
 }
 
 /// Writes through a temporary file and a rename, so a half-written file never remains; refuses a
-/// symlink inside the vault (`safe::write`).
+/// symlink inside the vault (`safe::write`). Secrets are masked: the vault is pushed to a remote.
 pub(crate) fn write(path: &Path, text: &str) -> Result<()> {
-    crate::safe::write(path, text)
+    crate::safe::write(path, &crate::secret::redact(text))
 }
 
 #[cfg(test)]

@@ -29,8 +29,11 @@ install -m 755 sbrain-*/sbrain ~/.local/bin/sbrain
   dated rule. Before the session ends it writes a handoff card with the next step.
 - **Sessions without a card.** `sbrain sweep` reads the transcripts of sessions that ended without a handoff
   card and has your coding CLI distill them into the same records.
-- **Health.** `sbrain doctor` finds broken records, work left unverified or forgotten, verified work whose
-  files changed since, links that point nowhere, context files that get cut, and backup problems.
+- **Health.** `sbrain doctor` finds broken records, secrets in the vault, work left unverified or forgotten,
+  verified work whose files changed since, links that point nowhere, context files that get cut, and backup
+  problems.
+- **Secrets stay out.** Keys, tokens and passwords are masked as `[redacted]` in what the engine reads and in
+  every record sbrain or an agent writes, before the vault is committed.
 
 The vault format, from the records' fields to the session-start context, is described in
 [docs/vault-format.md](vault-format.md).
@@ -106,7 +109,7 @@ choices; `sbrain engine set claude --model sonnet --effort medium` changes them.
 
 Connecting Claude Code (`sbrain connect claude` shows the plan; `--yes` applies it) makes these changes:
 
-- SessionStart, UserPromptSubmit, SessionEnd and PostToolUse (after Edit and Write) hooks in
+- SessionStart, UserPromptSubmit, SessionEnd, PostToolUse (after Edit and Write) and PreCompact hooks in
   `~/.claude/settings.json` that run `sbrain hook …`
 - In `permissions.allow`, rules for reading the memory and writing records (`sbrain project`, `items`,
   `doctor`, `item add|set`, `decision add|set`, `session write`, `rule list` and the like). Everything
@@ -136,8 +139,16 @@ when the context fills up, a reminder to hand off. `sbrain hook session-end` pri
 session ended, so the sweep distills it right away instead of waiting for it to settle. `sbrain hook
 tool-use` runs after the agent edits or writes a file: when the file is an item or decision in the vault
 and something is wrong with it (missing fields, a status or type that does not exist, an id already taken,
-a link to nothing), the agent is told what to fix at once. A file in the vault that is fine is committed, so
-hand edits join the history like sbrain's own writes; files outside the vault get no answer.
+a link to nothing), the agent is told what to fix at once. Before that, anything in the file that looks
+like a secret is replaced with `[redacted]` and the agent is told. A file in the vault that is fine is
+committed, so hand edits join the history like sbrain's own writes; files outside the vault get no answer.
+
+`sbrain hook pre-compact` runs before Claude Code compacts a conversation. A summary can drop what the user
+asked along the way, and the sweep has not distilled the session yet, so the user's own messages are saved
+word for word, secrets masked, to `.sbrain/cache/compact/<session>.md` (machine-local, removed after 14 days).
+The session start that follows the compaction adds them to its context under "Kept through compaction",
+within 3500 characters: messages that read like instructions or corrections first ("from now on", "never",
+"bundan sonra", "yazma"), then the newest, shown in the order they were written.
 
 Every `sbrain` command except the hooks keeps the connection working. A connection missing one of the hooks
 gets it back, recorded like the others, so `sbrain disconnect` removes it too. When the sbrain the hooks run

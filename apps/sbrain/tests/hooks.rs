@@ -1,4 +1,5 @@
-//! `sbrain hook tool-use`: a record the agent wrote to the vault is checked at once.
+//! `sbrain hook …`: a record the agent wrote to the vault is checked at once and its secrets masked;
+//! the user's messages are kept through a compaction.
 #![cfg(unix)]
 
 use std::io::Write as _;
@@ -86,6 +87,25 @@ fn a_record_written_wrong_is_reported_to_the_agent() {
     assert!(
         git(&["status", "--porcelain"]).contains("app-0002-bad.md"),
         "a wrong record waits for its fix"
+    );
+
+    // A secret written into the vault is masked before the commit, and the agent is told.
+    let key = format!("sk-ant-api03-{}", "Kd8".repeat(12));
+    let out = wrote(
+        "app-0003-key.md",
+        &format!("---\nid: app-0003\ntitle: Key\ntype: bug\nstatus: inbox\n---\n\nUse {key}\n"),
+    );
+    let answer: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    let reason = answer["reason"].as_str().unwrap();
+    assert!(reason.contains("Anthropic key"), "{reason}");
+    let written = std::fs::read_to_string(items.join("app-0003-key.md")).unwrap();
+    assert!(
+        written.contains("Use [redacted]") && !written.contains(&key),
+        "{written}"
+    );
+    assert!(
+        git(&["log", "-1", "-p"]).contains("Use [redacted]"),
+        "the masked file is what is committed"
     );
 
     // A file outside the vault's records is none of the hook's business.
@@ -203,4 +223,77 @@ fn hooks_stay_fast_on_a_large_vault() {
         assert!(best < limit, "{hook} took {best} ms (limit {limit} ms)");
         eprintln!("{hook}: {best} ms");
     }
+}
+
+#[test]
+fn the_users_words_come_back_after_a_compaction() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+    let settings = root.join("settings.json");
+    let vault = root.join("vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    sbrain(
+        &settings,
+        &["setup", "set", "--vault", vault.to_str().unwrap(), "--auto"],
+        "",
+    );
+    let transcript = root.join("t.jsonl");
+    let lines: Vec<String> = [
+        "bundan sonra migration yazma, format bozulabilir",
+        "ok",
+        "now add the PreCompact hook",
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, m)| {
+        serde_json::json!({
+            "type": "user",
+            "cwd": root,
+            "timestamp": format!("2026-10-30T09:{i:02}:00Z"),
+            "message": {"content": m}
+        })
+        .to_string()
+    })
+    .collect();
+    std::fs::write(&transcript, lines.join("\n") + "\n").unwrap();
+
+    let compact = serde_json::json!({
+        "hook_event_name": "PreCompact",
+        "session_id": "abc-123",
+        "transcript_path": transcript,
+        "cwd": root,
+        "trigger": "auto"
+    });
+    assert_eq!(
+        sbrain(&settings, &["hook", "pre-compact"], &compact.to_string()),
+        "",
+        "PreCompact answers nothing"
+    );
+
+    let start = |source: &str| {
+        let payload = serde_json::json!({
+            "hook_event_name": "SessionStart",
+            "session_id": "abc-123",
+            "source": source,
+            "cwd": root
+        });
+        let out = sbrain(&settings, &["hook", "session-start"], &payload.to_string());
+        let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        v["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let after = start("compact");
+    assert!(after.contains("## Kept through compaction"), "{after}");
+    assert!(
+        after.contains("bundan sonra migration yazma, format bozulabilir"),
+        "{after}"
+    );
+    assert!(after.contains("now add the PreCompact hook"), "{after}");
+    assert!(after.chars().count() < 10_000, "within a hook's limit");
+    assert!(
+        !start("startup").contains("Kept through compaction"),
+        "only a session start after a compaction gets them"
+    );
 }

@@ -681,7 +681,7 @@ fn create_numbered(
             .open(&path)
         {
             Ok(mut file) => {
-                file.write_all(text(&id).as_bytes())
+                file.write_all(crate::secret::redact(&text(&id)).as_bytes())
                     .map_err(|source| Error::Io {
                         path: path.clone(),
                         source,

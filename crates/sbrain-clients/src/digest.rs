@@ -1,13 +1,18 @@
 //! What every client's transcript digest shares: the user's messages under `## User` headings, other
-//! text quoted so it cannot pass for the user, and a budget that shortens tool lines first.
+//! text quoted so it cannot pass for the user, a budget that shortens tool lines first, and secrets
+//! masked in all of it before it leaves the machine.
 
 use chrono::{DateTime, Local};
 
-use crate::Digest;
+use sbrain_core::secret;
+
+use crate::{Digest, UserMessage};
 
 /// Characters a digest may have; past it tool lines, then the assistant's text are shortened, and at
 /// last the middle of the session is left out.
 pub(crate) const BUDGET: usize = 120_000;
+/// Characters kept of one message the user wrote.
+const USER_LIMIT: usize = 4000;
 /// Words in a shell command whose result is kept in the digest.
 const SIGNAL_WORDS: [&str; 10] = [
     "git commit",
@@ -56,7 +61,8 @@ impl Builder {
 
     /// A message the user wrote; notifications the agent shows as the user's are kept as tool lines.
     pub fn user(&mut self, ts: &str, text: &str) {
-        let text = text.trim();
+        let text = secret::redact(text.trim());
+        let text = text.as_ref();
         if text.is_empty() {
             return;
         }
@@ -66,12 +72,17 @@ impl Builder {
         }
         self.digest.user_turns += 1;
         self.digest.last_user = ts.to_owned();
-        self.lines
-            .push((0, format!("\n## User [{ts}]\n{}", clip(text, 4000))));
+        let text = clip(text, USER_LIMIT);
+        self.lines.push((0, format!("\n## User [{ts}]\n{text}")));
+        self.digest.user_messages.push(UserMessage {
+            at: ts.to_owned(),
+            text,
+        });
     }
 
     pub fn assistant(&mut self, text: &str) {
-        let text = text.trim();
+        let text = secret::redact(text.trim());
+        let text = text.as_ref();
         if !text.is_empty() {
             self.lines
                 .push((1, quoted(&format!("Assistant: {}", clip(text, 2500)))));
@@ -80,7 +91,7 @@ impl Builder {
 
     /// A tool call or its result.
     pub fn tool(&mut self, line: String) {
-        self.lines.push((2, quoted(&line)));
+        self.lines.push((2, quoted(&secret::redact(&line))));
     }
 
     pub fn finish(mut self) -> Digest {
@@ -144,4 +155,24 @@ pub(crate) fn modified(meta: &std::fs::Metadata) -> i64 {
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secrets_are_masked_everywhere() {
+        let key = format!("sk-proj-{}", "Ab1".repeat(10));
+        let mut b = Builder::default();
+        b.user("2026-10-30 10:00", &format!("use {key} for it"));
+        b.assistant(&format!("Saved OPENAI_API_KEY={key}"));
+        b.tool(format!("$ curl -H 'Authorization: Bearer {key}'"));
+        let d = b.finish();
+        assert!(!d.text.contains(&key), "{}", d.text);
+        assert_eq!(d.text.matches(secret::MASK).count(), 3, "{}", d.text);
+        assert_eq!(d.user_messages.len(), 1);
+        assert_eq!(d.user_messages[0].text, "use [redacted] for it");
+        assert_eq!(d.user_messages[0].at, "2026-10-30 10:00");
+    }
 }

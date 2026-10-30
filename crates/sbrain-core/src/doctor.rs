@@ -1,4 +1,4 @@
-//! Health check: broken records, weak verify commands, work left unverified or forgotten, stale
+//! Health check: broken records, secrets in the vault, weak verify commands, work left unverified or forgotten, stale
 //! verified items, broken links, context files that get cut, the vault's git backup, failed or slow
 //! hooks, the job ledger and the sweep schedule. Reads only; the result is also saved to `.sbrain/cache/doctor.json`, which the
 //! session-start context summarizes.
@@ -39,7 +39,7 @@ pub enum Level {
 pub struct Finding {
     pub level: Level,
     /// What was checked: format, id, status, type, related, superseded, weak-verify, unverified,
-    /// forgotten, stale, size, git, push, hook, hook-speed, ledger or sweep.
+    /// forgotten, stale, size, secret, git, push, hook, hook-speed, ledger or sweep.
     pub check: &'static str,
     pub msg: String,
     /// How to fix it; empty when there is nothing to do.
@@ -84,6 +84,24 @@ pub fn doctor(vault: &Vault, access: &Access, now: NaiveDateTime, quick: bool) -
         });
     };
     let today = now.date();
+
+    // Secrets in any file the vault's git history takes.
+    for path in vault_files(vault.root()) {
+        let Ok(text) = crate::safe::read_to_string(&path) else {
+            continue;
+        };
+        let kinds = crate::secret::kinds(&text);
+        if !kinds.is_empty() {
+            let rel = relative(vault, &path);
+            add(
+                Level::Error,
+                "secret",
+                ("", &rel),
+                format!("{rel}: holds what looks like a secret ({})", kinds.join(", ")),
+                "Revoke or rotate it, then replace it with [redacted]; once committed it stays in the vault's git history.".into(),
+            );
+        }
+    }
 
     // Verified items whose files changed, for session start (`stale::Found`).
     let mut stale_found = Vec::new();
@@ -770,6 +788,62 @@ fn markdown_files(dir: &Path) -> Vec<std::path::PathBuf> {
     out
 }
 
+/// Every text file in the vault, at any depth, except hidden files and folders (`.git`, `.sbrain`).
+fn vault_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry
+                .file_name()
+                .to_str()
+                .is_none_or(|n| n.starts_with('.'))
+            {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                dirs.push(path);
+            } else if kind.is_file()
+                && path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .is_some_and(|e| matches!(e, "md" | "toml" | "json" | "txt"))
+            {
+                out.push(path);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Masks the secrets in a vault file the agent wrote; returns what kinds were masked, empty when
+/// there were none or the file is not the vault's (`.sbrain`, `.git`, outside it, a link).
+pub fn mask_secrets(vault: &Vault, path: &Path) -> Result<Vec<&'static str>> {
+    let Ok(rel) = path.strip_prefix(vault.root()) else {
+        return Ok(Vec::new());
+    };
+    if rel.starts_with(".sbrain") || rel.starts_with(".git") {
+        return Ok(Vec::new());
+    }
+    if !std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file()) {
+        return Ok(Vec::new());
+    }
+    let text = crate::safe::read_text(path)?;
+    let kinds = crate::secret::kinds(&text);
+    if !kinds.is_empty() {
+        crate::safe::write(path, &crate::secret::redact(&text))?;
+    }
+    Ok(kinds)
+}
+
 fn relative(vault: &Vault, path: &Path) -> String {
     path.strip_prefix(vault.root())
         .unwrap_or(path)
@@ -1046,6 +1120,40 @@ mod tests {
             .len(),
             1
         );
+    }
+
+    #[test]
+    fn secrets_are_reported_and_masked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let vault = crate::vault::tests::new_vault_without_git(root);
+        let key = format!("ghp_{}", "a1B2".repeat(9));
+        write(root, "notes/deploy.md", &format!("token {key}\n"));
+        write(
+            root,
+            ".sbrain/cache/x.json",
+            &format!("{{\"k\": \"{key}\"}}"),
+        );
+        let report = doctor(&vault, &Access::auto(), at("2026-10-30 10:00"), true).unwrap();
+        let secrets: Vec<_> = report
+            .findings
+            .iter()
+            .filter(|f| f.check == "secret")
+            .collect();
+        assert_eq!(secrets.len(), 1, "{secrets:#?}");
+        assert_eq!(secrets[0].file, "notes/deploy.md");
+        assert!(secrets[0].msg.contains("GitHub token"));
+
+        let path = vault.root().join("notes/deploy.md");
+        assert_eq!(mask_secrets(&vault, &path).unwrap(), ["GitHub token"]);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "token [redacted]\n");
+        assert!(mask_secrets(&vault, &path).unwrap().is_empty());
+        let cache = vault.root().join(".sbrain/cache/x.json");
+        assert!(
+            mask_secrets(&vault, &cache).unwrap().is_empty(),
+            "the machine's folder is not the vault's"
+        );
+        assert!(fs::read_to_string(cache).unwrap().contains(&key));
     }
 
     #[test]

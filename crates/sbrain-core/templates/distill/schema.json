@@ -20,7 +20,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "type", "status", "problem", "solution", "files", "aliases", "commit", "verify"],
+        "required": ["title", "type", "status", "problem", "solution", "files", "aliases", "commit", "verify", "evidence"],
         "properties": {
           "title": { "type": "string" },
           "type": { "type": "string", "enum": ["bug", "feature", "idea", "debt"] },
@@ -30,7 +30,8 @@
           "files": { "type": "array", "items": { "type": "string" } },
           "aliases": { "type": "array", "items": { "type": "string" } },
           "commit": { "type": "string" },
-          "verify": { "type": "string" }
+          "verify": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
         }
       }
     },
@@ -39,14 +40,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "status", "commit", "verify", "files", "note"],
+        "required": ["id", "status", "commit", "verify", "files", "note", "evidence"],
         "properties": {
           "id": { "type": "string" },
           "status": { "type": "string", "enum": ["", "inbox", "planned", "doing", "done-unverified", "dropped"] },
           "commit": { "type": "string" },
           "verify": { "type": "string" },
           "files": { "type": "array", "items": { "type": "string" } },
-          "note": { "type": "string" }
+          "note": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
         }
       }
     },
@@ -55,14 +57,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "context", "decision", "why", "alternatives", "related"],
+        "required": ["title", "context", "decision", "why", "alternatives", "related", "evidence"],
         "properties": {
           "title": { "type": "string" },
           "context": { "type": "string" },
           "decision": { "type": "string" },
           "why": { "type": "string" },
           "alternatives": { "type": "string" },
-          "related": { "type": "array", "items": { "type": "string" } }
+          "related": { "type": "array", "items": { "type": "string" } },
+          "evidence": { "type": "array", "items": { "type": "string" } }
         }
       }
     },
@@ -71,10 +74,11 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["scope", "rule"],
+        "required": ["scope", "rule", "evidence"],
         "properties": {
           "scope": { "type": "string", "enum": ["project", "general"] },
-          "rule": { "type": "string" }
+          "rule": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
         }
       }
     },
