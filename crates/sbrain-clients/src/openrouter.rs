@@ -72,6 +72,10 @@ impl Client for OpenRouter {
 }
 
 impl Sweeper for OpenRouter {
+    fn keeps_transcripts(&self) -> bool {
+        false
+    }
+
     fn transcripts(&self, _skip: &std::path::Path) -> Result<Vec<Transcript>> {
         Ok(Vec::new())
     }

@@ -451,7 +451,8 @@ fn sources(
 ) -> Vec<Box<dyn Client>> {
     clients
         .into_iter()
-        .filter(|c| c.sweeper().is_some() && (c.id() == engine || connected(c.as_ref())))
+        .filter(|c| c.sweeper().is_some_and(|s| s.keeps_transcripts()))
+        .filter(|c| c.id() == engine || connected(c.as_ref()))
         .collect()
 }
 
