@@ -1,24 +1,24 @@
-//! `cargo xtask reset`: puts this machine back to before sbrain was first run, to try the first run again.
+//! `cargo xtask reset`: puts this machine back to before reprise was first run, to try the first run again.
 //!
 //! Lists what it will do and asks first. Files go to the Trash unless `--delete` is given. A Claude Code
-//! connection is undone with sbrain's own `disconnect`, and the scheduled sweep with `sbrain sweep
-//! unschedule`, before sbrain's settings folder goes, because the records of what they installed live
-//! there; the copies connecting made of Claude Code's files (`*.sbrain-backup`) go too. The vault is left
-//! alone unless asked for, and only an sbrain vault is ever removed.
+//! connection is undone with reprise's own `disconnect`, and the scheduled sweep with `reprise sweep
+//! unschedule`, before reprise's settings folder goes, because the records of what they installed live
+//! there; the copies connecting made of Claude Code's files (`*.reprise-backup`) go too. The vault is left
+//! alone unless asked for, and only an reprise vault is ever removed.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use sbrain_core::settings::Settings;
-use sbrain_core::sweep::Schedule;
-use sbrain_core::vault::Vault;
+use reprise_core::settings::Settings;
+use reprise_core::sweep::Schedule;
+use reprise_core::vault::Vault;
 
 pub const USAGE: &str =
-    "  reset   removes sbrain's settings and caches, undoes connections and the scheduled sweep, to try
+    "  reset   removes reprise's settings and caches, undoes connections and the scheduled sweep, to try
           the first run again. Lists what it will do and asks first; files go to the Trash.
-            --vault        also the vault in the settings (only an sbrain vault)
+            --vault        also the vault in the settings (only an reprise vault)
             --delete       delete instead of moving to the Trash
             --yes          do not ask";
 
@@ -41,7 +41,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     }
     let settings_path = Settings::default_path()?;
     let settings = Settings::load_from(&settings_path).unwrap_or_default();
-    let connected: Vec<_> = sbrain_clients::all()
+    let connected: Vec<_> = reprise_clients::all()
         .into_iter()
         .filter(|c| {
             c.connector()
@@ -62,7 +62,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
             Some(vault) if Vault::open(vault).is_ok() => paths.push(vault.to_path_buf()),
             Some(vault) if vault.exists() => {
                 notes.push(format!(
-                    "{} is not an sbrain vault; it is left alone",
+                    "{} is not an reprise vault; it is left alone",
                     shown(vault)
                 ));
             }
@@ -73,7 +73,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     paths.dedup();
 
     if connected.is_empty() && scheduled.is_none() && paths.is_empty() {
-        println!("Nothing of sbrain's is left on this machine.");
+        println!("Nothing of reprise's is left on this machine.");
         notes.iter().for_each(|n| println!("  {n}"));
         return Ok(());
     }
@@ -131,14 +131,14 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// `sbrain sweep unschedule`, built from this checkout: it removes exactly the job it installed.
+/// `reprise sweep unschedule`, built from this checkout: it removes exactly the job it installed.
 fn unschedule(root: &Path) -> Result<()> {
     let status = Command::new(env!("CARGO"))
         .args([
             "run",
             "--quiet",
             "--package",
-            "sbrain",
+            "reprise",
             "--",
             "sweep",
             "unschedule",
@@ -147,7 +147,7 @@ fn unschedule(root: &Path) -> Result<()> {
         .status()
         .context("cargo did not run")?;
     if !status.success() {
-        bail!("`sbrain sweep unschedule` failed");
+        bail!("`reprise sweep unschedule` failed");
     }
     Ok(())
 }
@@ -173,7 +173,7 @@ fn trash_dir() -> Result<PathBuf> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
-    let dir = base.join(format!("sbrain-reset-{stamp}"));
+    let dir = base.join(format!("reprise-reset-{stamp}"));
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     Ok(dir)
 }
@@ -186,7 +186,7 @@ fn shown(path: &Path) -> String {
     }
 }
 
-/// The copies connecting made of Claude Code's files before changing them (`*.sbrain-backup`). A later
+/// The copies connecting made of Claude Code's files before changing them (`*.reprise-backup`). A later
 /// connect keeps an existing copy, so a stale one would outlive the reset.
 fn connect_backups() -> Vec<PathBuf> {
     let dir = std::env::var_os("CLAUDE_CONFIG_DIR")
@@ -197,11 +197,11 @@ fn connect_backups() -> Vec<PathBuf> {
         .flatten()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.to_string_lossy().ends_with(".sbrain-backup"))
+        .filter(|p| p.to_string_lossy().ends_with(".reprise-backup"))
         .collect()
 }
 
-/// Moves `path` into `dir`, named after where it was (`Library__Application Support__sbrain`).
+/// Moves `path` into `dir`, named after where it was (`Library__Application Support__reprise`).
 fn to_trash(path: &Path, dir: &Path) -> Result<()> {
     let home = dirs::home_dir().unwrap_or_default();
     let shown = path.strip_prefix(&home).unwrap_or(path);

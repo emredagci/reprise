@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds the sbrain CLI for TARGET and packs it as dist/sbrain-<version>-<platform>.tar.gz (macos-arm64,
+# Builds the reprise CLI for TARGET and packs it as dist/reprise-<version>-<platform>.tar.gz (macos-arm64,
 # macos-x86_64, linux-arm64 or linux-x86_64): one folder holding
-# `sbrain`, LICENSE, NOTICE and README.md. The release workflow runs it once per target; it also runs by hand.
+# `reprise`, LICENSE, NOTICE and README.md. The release workflow runs it once per target; it also runs by hand.
 #
 #   TARGET=aarch64-apple-darwin ./.github/package.sh
 #
@@ -18,8 +18,8 @@ cd "$root"
 version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
 test -n "$version" || { echo "no version in Cargo.toml" >&2; exit 1; }
 
-cargo build --release --locked -p sbrain --target "$TARGET"
-bin="target/$TARGET/release/sbrain"
+cargo build --release --locked -p reprise --target "$TARGET"
+bin="target/$TARGET/release/reprise"
 
 if [[ "$TARGET" == *-apple-darwin && -n "${SIGN_IDENTITY:-}" ]]; then
   codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$bin"
@@ -27,8 +27,8 @@ if [[ "$TARGET" == *-apple-darwin && -n "${SIGN_IDENTITY:-}" ]]; then
   if [[ -n "${NOTARY_KEY_PATH:-}" ]]; then
     : "${NOTARY_KEY_ID:?set NOTARY_KEY_ID}" "${NOTARY_ISSUER:?set NOTARY_ISSUER}"
     work="$(mktemp -d)"
-    ditto -c -k "$bin" "$work/sbrain.zip"
-    xcrun notarytool submit "$work/sbrain.zip" \
+    ditto -c -k "$bin" "$work/reprise.zip"
+    xcrun notarytool submit "$work/reprise.zip" \
       --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" \
       --wait --timeout 30m --output-format json | tee "$work/result.json"
     status="$(sed -n 's/.*"status":"\([^"]*\)".*/\1/p' "$work/result.json")"
@@ -50,7 +50,7 @@ case "$TARGET" in
   x86_64-unknown-linux-gnu) platform=linux-x86_64 ;;
   *) echo "no platform name for $TARGET" >&2; exit 1 ;;
 esac
-name="sbrain-$version-$platform"
+name="reprise-$version-$platform"
 rm -rf "dist/$name" "dist/$name.tar.gz"
 mkdir -p "dist/$name"
 cp "$bin" LICENSE NOTICE README.md "dist/$name/"

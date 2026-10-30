@@ -465,6 +465,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "reprise"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "dirs",
+ "reprise-clients",
+ "reprise-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "reprise-clients"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "reprise-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "reprise-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "dirs",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "rsqlite-vfs"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -506,49 +549,6 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
-
-[[package]]
-name = "sbrain"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "dirs",
- "sbrain-clients",
- "sbrain-core",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "sbrain-clients"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dirs",
- "sbrain-core",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "sbrain-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dirs",
- "libc",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "toml",
-]
 
 [[package]]
 name = "serde"
@@ -875,8 +875,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
- "sbrain-clients",
- "sbrain-core",
+ "reprise-clients",
+ "reprise-core",
 ]
 
 [[package]]

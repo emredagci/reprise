@@ -1,5 +1,5 @@
 name: Report a problem
-description: Something in sbrain (the CLI, a hook or the scheduled sweep) does not work as it should.
+description: Something in reprise (the CLI, a hook or the scheduled sweep) does not work as it should.
 labels: [bug]
 body:
   - type: textarea
@@ -20,7 +20,7 @@ body:
     id: details
     attributes:
       label: Version and system
-      description: The output of `sbrain --version` and `sbrain clients`, and your OS.
+      description: The output of `reprise --version` and `reprise clients`, and your OS.
       render: text
     validations:
       required: true
@@ -28,4 +28,4 @@ body:
     id: more
     attributes:
       label: Anything else
-      description: Error messages, a screenshot, or the output of `sbrain doctor`. Leave out anything from your vault you do not want public.
+      description: Error messages, a screenshot, or the output of `reprise doctor`. Leave out anything from your vault you do not want public.

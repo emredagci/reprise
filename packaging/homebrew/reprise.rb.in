@@ -1,0 +1,55 @@
+# typed: strict
+# frozen_string_literal: true
+
+# Written to emredagci/homebrew-tap by reprise's release workflow from packaging/homebrew/reprise.rb.in in
+# emredagci/reprise; edit that file. Installed with `brew install emredagci/tap/reprise`.
+class Reprise < Formula
+  desc "Second brain for your coding agent"
+  homepage "https://github.com/emredagci/reprise"
+  version "@VERSION@"
+  license "Apache-2.0"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/emredagci/reprise/releases/download/@VERSION@/reprise-@VERSION@-macos-arm64.tar.gz"
+      sha256 "@SHA256_macos-arm64@"
+    end
+    on_intel do
+      url "https://github.com/emredagci/reprise/releases/download/@VERSION@/reprise-@VERSION@-macos-x86_64.tar.gz"
+      sha256 "@SHA256_macos-x86_64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/emredagci/reprise/releases/download/@VERSION@/reprise-@VERSION@-linux-arm64.tar.gz"
+      sha256 "@SHA256_linux-arm64@"
+    end
+    on_intel do
+      url "https://github.com/emredagci/reprise/releases/download/@VERSION@/reprise-@VERSION@-linux-x86_64.tar.gz"
+      sha256 "@SHA256_linux-x86_64@"
+    end
+  end
+
+  def install
+    bin.install "reprise"
+  end
+
+  def caveats
+    <<~EOS
+      Choose the vault and the folders reprise may read, then connect Claude Code:
+        reprise setup set --vault <folder> --auto
+        reprise connect claude --yes
+      To have this computer distill finished sessions by itself:
+        reprise sweep schedule
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/reprise --version")
+    ENV["REPRISE_SETTINGS"] = (testpath/"settings.json").to_s
+    (testpath/"vault").mkpath
+    system bin/"reprise", "setup", "set", "--vault", testpath/"vault", "--auto"
+    assert_path_exists testpath/"vault/.reprise/vault.toml"
+  end
+end
