@@ -162,6 +162,11 @@ fn open_cache(vault: &Vault) -> Result<rusqlite::Connection> {
     crate::safe::create_dir_all(&dir)?;
     let db = rusqlite::Connection::open(dir.join("vectors.sqlite"))
         .map_err(|e| engine_error(format!("the vector cache: {e}")))?;
+    // Two searches at once (a hook and the CLI) wait for each other instead of failing.
+    db.busy_timeout(std::time::Duration::from_secs(10))
+        .map_err(|e| engine_error(format!("the vector cache: {e}")))?;
+    db.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| engine_error(format!("the vector cache: {e}")))?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS vectors (path TEXT NOT NULL, model TEXT NOT NULL, hash TEXT NOT NULL, \
          vec BLOB NOT NULL, PRIMARY KEY (path, model));",
