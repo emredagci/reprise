@@ -296,4 +296,20 @@ fn the_users_words_come_back_after_a_compaction() {
         !start("startup").contains("Kept through compaction"),
         "only a session start after a compaction gets them"
     );
+
+    // Every prompt after it carries the instructions among them.
+    let prompt = serde_json::json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "abc-123",
+        "prompt": "devam edelim",
+        "cwd": root
+    });
+    let out = sbrain(&settings, &["hook", "prompt"], &prompt.to_string());
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    let ctx = v["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap();
+    assert!(ctx.contains("Still in effect"), "{ctx}");
+    assert!(ctx.contains("bundan sonra migration yazma"), "{ctx}");
+    assert!(!ctx.contains("now add the PreCompact hook"), "{ctx}");
 }

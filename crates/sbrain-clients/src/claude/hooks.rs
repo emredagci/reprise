@@ -162,6 +162,9 @@ pub fn run(
         Event::Prompt => {
             let mut parts = Vec::new();
             let session = field("session_id").unwrap_or("");
+            if let Some(instructions) = sbrain_core::compact::instructions_block(vault, session) {
+                parts.push(instructions);
+            }
             let usage = field("transcript_path").and_then(|t| context_usage(Path::new(t)));
             if let (Some((used, model)), false) = (usage, session.is_empty())
                 && let Some(notice) = usage_notice(vault, session, used, &model)?

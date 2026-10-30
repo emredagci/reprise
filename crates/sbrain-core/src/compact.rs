@@ -6,7 +6,9 @@
 //! follows the compaction hands them back to the agent.
 //!
 //! The block has a budget, so not every message fits: messages that read like instructions or
-//! corrections go first, then the newest; they are shown in the order they were written.
+//! corrections go first, then the newest; they are shown in the order they were written. The
+//! instructions among them also ride along with every prompt after the compaction, in a smaller
+//! block, so they stay in front of the agent for the rest of the session.
 
 use std::cmp::Reverse;
 use std::path::PathBuf;
@@ -18,6 +20,8 @@ use crate::{Result, Vault};
 /// Characters of the kept messages handed back after a compaction. With the session-start block
 /// (`context::SESSION_START_BUDGET`) it stays under the 10,000 characters a hook may add.
 pub const KEPT_BUDGET: usize = 3500;
+/// Characters of the instructions added to every prompt after a compaction.
+pub const INSTRUCTIONS_BUDGET: usize = 1500;
 /// Characters kept of one message.
 const MESSAGE_LIMIT: usize = 600;
 /// A message shorter than this ("ok", "evet", "devam") says nothing on its own.
@@ -86,6 +90,33 @@ fn file(vault: &Vault, session: &str) -> PathBuf {
         .join(format!("{session}.md"))
 }
 
+fn instructions_file(vault: &Vault, session: &str) -> PathBuf {
+    vault
+        .cache_dir()
+        .join("compact")
+        .join(format!("{session}.instructions.md"))
+}
+
+/// Indexes of `candidates` that fit `budget`, instructions before the rest, then the newest; in the
+/// order written. With `only_instructions` the rest are left out.
+fn fit(candidates: &[(usize, bool, String)], budget: usize, only_instructions: bool) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..candidates.len())
+        .filter(|&k| !only_instructions || candidates[k].1)
+        .collect();
+    order.sort_by_key(|&k| (Reverse(candidates[k].1), Reverse(candidates[k].0)));
+    let mut chosen = Vec::new();
+    let mut used = 0;
+    for k in order {
+        let len = candidates[k].2.chars().count() + 1;
+        if used + len <= budget {
+            used += len;
+            chosen.push(k);
+        }
+    }
+    chosen.sort_unstable();
+    chosen
+}
+
 /// Saves the user's messages of `session` (time, text; in the order written) for the session start
 /// after the compaction. Returns how many fit; 0 when none says anything, and the file is removed then.
 pub fn keep(vault: &Vault, session: &str, messages: &[(&str, &str)]) -> Result<usize> {
@@ -110,23 +141,23 @@ pub fn keep(vault: &Vault, session: &str, messages: &[(&str, &str)]) -> Result<u
             Some((i, is_directive(&text), line))
         })
         .collect();
-    let mut order: Vec<usize> = (0..candidates.len()).collect();
-    order.sort_by_key(|&k| (Reverse(candidates[k].1), Reverse(candidates[k].0)));
-    let mut chosen = Vec::new();
-    let mut used = 0;
-    for k in order {
-        let len = candidates[k].2.chars().count() + 1;
-        if used + len <= KEPT_BUDGET {
-            used += len;
-            chosen.push(k);
-        }
-    }
-    chosen.sort_unstable();
+    let chosen = fit(&candidates, KEPT_BUDGET, false);
+    let instructions = fit(&candidates, INSTRUCTIONS_BUDGET, true);
 
     let path = file(vault, session);
     let dir = path.parent().expect("the file is in a folder");
     crate::safe::create_dir_all(dir)?;
     prune(dir);
+    let instructions_path = instructions_file(vault, session);
+    if instructions.is_empty() {
+        let _ = std::fs::remove_file(&instructions_path);
+    } else {
+        let lines: Vec<&str> = instructions
+            .iter()
+            .map(|k| candidates[*k].2.as_str())
+            .collect();
+        crate::safe::write(&instructions_path, &format!("{}\n", lines.join("\n")))?;
+    }
     if chosen.is_empty() {
         let _ = std::fs::remove_file(&path);
         return Ok(0);
@@ -161,6 +192,21 @@ pub fn kept_block(vault: &Vault, session: &str) -> Option<String> {
          before it, word for word (secrets masked). What they ask still holds unless the user changed it later; \
          the summary may have dropped it.\n\n{text}"
     ))
+}
+
+/// The block added to every prompt of `session` after it was compacted: the user's instructions from
+/// before it; `None` when there were none or it was never compacted.
+pub fn instructions_block(vault: &Vault, session: &str) -> Option<String> {
+    if !is_session_id(session) {
+        return None;
+    }
+    let text = crate::safe::read_to_string(instructions_file(vault, session)).ok()?;
+    let text = text.trim();
+    (!text.is_empty()).then(|| {
+        format!(
+            "Still in effect from before this conversation was compacted (the user's words):\n{text}"
+        )
+    })
 }
 
 /// Removes kept messages older than `KEEP_DAYS`.
@@ -261,7 +307,16 @@ mod tests {
         );
         assert!(kept >= 2);
 
+        let every = instructions_block(&vault, "s-1").unwrap();
+        assert!(every.contains("bundan sonra migration yazma"), "{every}");
+        assert!(
+            !every.contains("[11:09]"),
+            "only instructions ride along: {every}"
+        );
+        assert!(every.chars().count() <= INSTRUCTIONS_BUDGET + 100);
+
         assert_eq!(keep(&vault, "s-1", &[("10:00", "ok")]).unwrap(), 0);
+        assert!(instructions_block(&vault, "s-1").is_none());
         assert!(
             kept_block(&vault, "s-1").is_none(),
             "nothing left to hand back"
