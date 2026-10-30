@@ -1,4 +1,4 @@
-//! `cargo xtask <task>`: development tasks that are not part of the sbrain CLI.
+//! `cargo xtask <task>`: development tasks that are not part of the reprise CLI.
 
 use std::path::{Path, PathBuf};
 

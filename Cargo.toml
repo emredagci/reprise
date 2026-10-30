@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
 members = [
-    "crates/sbrain-core",
-    "crates/sbrain-clients",
-    "apps/sbrain",
+    "crates/reprise-core",
+    "crates/reprise-clients",
+    "apps/reprise",
     "xtask",
 ]
 
@@ -15,8 +15,8 @@ publish = false
 license = "Apache-2.0"
 
 [workspace.dependencies]
-sbrain-core = { path = "crates/sbrain-core" }
-sbrain-clients = { path = "crates/sbrain-clients" }
+reprise-core = { path = "crates/reprise-core" }
+reprise-clients = { path = "crates/reprise-clients" }
 
 anyhow = "1.0.104"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
