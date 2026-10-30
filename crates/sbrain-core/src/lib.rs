@@ -1,6 +1,7 @@
 //! sbrain core: every operation on the vault. Knows nothing about coding agents.
 
 pub mod access;
+pub mod archive;
 pub mod browse;
 pub mod cache;
 pub mod compact;
@@ -27,6 +28,7 @@ pub mod vault;
 
 pub mod doctor;
 pub mod index;
+pub mod kept;
 pub mod ledger;
 pub mod report;
 pub mod reset;
