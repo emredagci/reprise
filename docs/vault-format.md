@@ -1,4 +1,4 @@
-# Vault format (version 2)
+# Vault format (version 3)
 
 An reprise vault is a folder of Markdown and TOML files that holds a coding agent's long-term memory: who the
 user is, the rules they taught it, and per project the current state, open work and decisions. Agents read it
@@ -52,7 +52,7 @@ vault (`AGENTS.md`) follow it.
 ```
 
 A folder is a vault when `.reprise/vault.toml` exists. Choosing an empty folder creates the whole layout. A
-folder with other content is never touched. A folder with `projects/` but no `.reprise/vault.toml` is a format 1
+folder with other content is never touched. A folder with `companion/` and `projects/` but no `.reprise/vault.toml` is a format 1
 vault and is not opened; its records can be imported (see below).
 
 Empty `items/`, `decisions/` and `sessions/` folders are not created; the first record creates its folder.
@@ -88,7 +88,7 @@ one, such as a file written another way; once committed it stays in the history,
 ## `.reprise/vault.toml`
 
 ```toml
-format = 2
+format = 3
 
 [projects]
 # Folders that hold unrelated sub-projects: `<folder>/<container>/<name>` is project `<name>`.
@@ -390,13 +390,13 @@ At most `max_per_run` sessions are distilled in one run.
 
 ## Importing a format 1 vault
 
-A format 1 vault is never opened; its records are imported into a format 2 vault instead (`reprise import
+A format 1 vault is never opened; its records are imported into a vault of the current format instead (`reprise import
 <folder>`). The source is only read. The target only gains
 files: a file that already exists is left alone (identical content counts as already imported, anything
 else is reported as a conflict), except `profile/user.md` and `profile/rules.md` while they still hold
 their templates. Running it again writes nothing new.
 
-| Format 1 | Format 2 |
+| Format 1 | Format 3 |
 | --- | --- |
 | `companion/core.md`, `companion/rules.md` | `profile/user.md`, `profile/rules.md` |
 | `knowledge/`, `inbox/`, `archive/` | `notes/`, `notes/inbox/`, `notes/archive/` |

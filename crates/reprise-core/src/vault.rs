@@ -14,10 +14,10 @@ pub struct Vault {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FolderKind {
-    /// Has `.reprise/vault.toml`: an reprise vault.
+    /// Has `.reprise/vault.toml`: a reprise vault.
     Vault,
-    /// Has `projects/` but no `.reprise/vault.toml`: a format 1 vault. It is not opened; `reprise import`
-    /// reads its records.
+    /// Has `companion/` and `projects/` but no `.reprise/vault.toml`: a format 1 vault. It is not opened;
+    /// `reprise import` reads its records.
     Format1,
     /// Empty (may contain only `.git` or `.DS_Store`): can become a new vault.
     Empty,
@@ -65,7 +65,7 @@ impl Vault {
         if path.join(MARKER).is_file() {
             return Ok(FolderKind::Vault);
         }
-        if path.join("projects").is_dir() {
+        if path.join("companion").is_dir() && path.join("projects").is_dir() {
             return Ok(FolderKind::Format1);
         }
         let entries = std::fs::read_dir(path).map_err(|source| Error::Io {
@@ -181,7 +181,7 @@ pub(crate) mod tests {
     use super::*;
     use std::fs;
 
-    /// A new format 2 vault in `path` (created if missing).
+    /// A new vault of the current format in `path` (created if missing).
     pub(crate) fn new_vault(path: &Path) -> Vault {
         fs::create_dir_all(path).unwrap();
         Vault::choose(path).unwrap()
@@ -207,6 +207,7 @@ pub(crate) mod tests {
 
         let format1 = root.join("format1");
         fs::create_dir_all(format1.join("projects")).unwrap();
+        fs::create_dir_all(format1.join("companion")).unwrap();
         assert_eq!(Vault::inspect(&format1).unwrap(), FolderKind::Format1);
 
         let empty = root.join("empty");
@@ -223,6 +224,16 @@ pub(crate) mod tests {
             Vault::inspect(&root.join("missing")),
             Err(Error::VaultNotFound(_))
         ));
+    }
+
+    #[test]
+    fn a_projects_folder_alone_is_not_format1() {
+        let tmp = tempfile::tempdir().unwrap();
+        let other = tmp.path().join("other");
+        fs::create_dir_all(other.join("projects/app/items")).unwrap();
+        fs::create_dir_all(other.join(".hidden")).unwrap();
+        assert_eq!(Vault::inspect(&other).unwrap(), FolderKind::Other);
+        assert!(matches!(Vault::open(&other), Err(Error::NotAVault(_))));
     }
 
     #[test]
@@ -247,6 +258,7 @@ pub(crate) mod tests {
 
         let format1 = tmp.path().join("format1");
         fs::create_dir_all(format1.join("projects")).unwrap();
+        fs::create_dir_all(format1.join("companion")).unwrap();
         assert!(matches!(
             Vault::choose(&format1),
             Err(Error::Format1Vault(_))
@@ -277,10 +289,10 @@ pub(crate) mod tests {
         assert!(matches!(Vault::open(tmp.path()), Err(Error::NotAVault(_))));
 
         let v = new_vault(&tmp.path().join("v"));
-        fs::write(v.config_path(), "format = 3\n").unwrap();
+        fs::write(v.config_path(), "format = 2\n").unwrap();
         assert!(matches!(
             Vault::open(v.root()),
-            Err(Error::UnsupportedFormat { found: 3, .. })
+            Err(Error::UnsupportedFormat { found: 2, .. })
         ));
         fs::write(v.config_path(), "not toml [").unwrap();
         assert!(matches!(

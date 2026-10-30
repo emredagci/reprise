@@ -139,16 +139,12 @@ removes exactly that. Things that already existed are left alone, and each file 
 Codex cannot be connected; its sessions are swept when it is installed, and it can be the engine
 ([Sweep](#sweep)).
 
-## Status line, server and meaning search
+## Status line and meaning search
 
 - **Status line.** `reprise statusline` prints `reprise · <project> · <what it last did>` (context loaded,
   N related records recalled, messages kept through a compaction, a vault file saved or a secret masked),
   from what the hooks noted in `.reprise/cache/pulse/`. In `~/.claude/settings.json`:
   `"statusLine": {"type": "command", "command": "reprise statusline"}`. Connecting does not set it.
-- **Server.** `reprise serve [--port 7448]` serves the vault over HTTP on 127.0.0.1 for other tools:
-  `GET /v1/status`, `POST /v1/search`, `GET /v1/facts?project=<p>[&at=<date>]`,
-  `GET /v1/timeline?project=<p>`, `POST /v1/hook/<event>`. A request must name `127.0.0.1` or
-  `localhost` as its host, and a POST must be `application/json`. Nothing else needs it.
 - **Meaning search.** `reprise embeddings set --url <endpoint> --model <name> [--key-env VAR]` points at
   an OpenAI-compatible embeddings endpoint (a local Ollama: `http://localhost:11434/v1/embeddings`);
   `reprise search --semantic` then also lists the records closest in meaning. Vectors are cached in
@@ -324,7 +320,7 @@ end to end (connect, schedule, a session reported as ended and distilled by the 
 
 To try the first run again, `cargo xtask reset` disconnects the coding agents, removes the scheduled sweep
 and moves reprise's settings and caches to the Trash. It lists what it will do and asks first. `--vault` adds
-the vault in the settings (only an reprise vault); `--delete` deletes instead; `--yes` does not ask.
+the vault in the settings (only a reprise vault); `--delete` deletes instead; `--yes` does not ask.
 
 ```bash
 cargo xtask reset

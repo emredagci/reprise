@@ -4,7 +4,7 @@
 //! connection is undone with reprise's own `disconnect`, and the scheduled sweep with `reprise sweep
 //! unschedule`, before reprise's settings folder goes, because the records of what they installed live
 //! there; the copies connecting made of Claude Code's files (`*.reprise-backup`) go too. The vault is left
-//! alone unless asked for, and only an reprise vault is ever removed.
+//! alone unless asked for, and only a reprise vault is ever removed.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -18,7 +18,7 @@ use reprise_core::vault::Vault;
 pub const USAGE: &str =
     "  reset   removes reprise's settings and caches, undoes connections and the scheduled sweep, to try
           the first run again. Lists what it will do and asks first; files go to the Trash.
-            --vault        also the vault in the settings (only an reprise vault)
+            --vault        also the vault in the settings (only a reprise vault)
             --delete       delete instead of moving to the Trash
             --yes          do not ask";
 
@@ -62,7 +62,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
             Some(vault) if Vault::open(vault).is_ok() => paths.push(vault.to_path_buf()),
             Some(vault) if vault.exists() => {
                 notes.push(format!(
-                    "{} is not an reprise vault; it is left alone",
+                    "{} is not a reprise vault; it is left alone",
                     shown(vault)
                 ));
             }
