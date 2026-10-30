@@ -312,4 +312,17 @@ fn the_users_words_come_back_after_a_compaction() {
     assert!(ctx.contains("Still in effect"), "{ctx}");
     assert!(ctx.contains("bundan sonra migration yazma"), "{ctx}");
     assert!(!ctx.contains("now add the PreCompact hook"), "{ctx}");
+
+    // The status line says what sbrain last did in the session.
+    let status = serde_json::json!({"session_id": "abc-123", "workspace": {"current_dir": root}});
+    let line = sbrain(&settings, &["statusline"], &status.to_string());
+    assert!(
+        line.starts_with("sbrain · no project · ") && line.trim().ends_with("(just now)"),
+        "{line}"
+    );
+    let other = serde_json::json!({"session_id": "other-1"});
+    assert_eq!(
+        sbrain(&settings, &["statusline"], &other.to_string()).trim(),
+        "sbrain · no project"
+    );
 }

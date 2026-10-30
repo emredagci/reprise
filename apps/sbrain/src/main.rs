@@ -135,6 +135,9 @@ enum Command {
     /// Unpacks an archive `export` wrote into an empty folder; `sbrain setup set --vault <folder>`
     /// then makes it the vault.
     Restore { archive: PathBuf, folder: PathBuf },
+    /// Claude Code status line: reads its JSON on stdin and prints what sbrain last did in the session.
+    /// Set it with `"statusLine": {"type": "command", "command": "sbrain statusline"}`.
+    Statusline,
     /// Every item with its sections, newest first, as JSON.
     Items,
     /// Checks the vault: broken records, unverified or forgotten work, stale items, broken links,
@@ -614,6 +617,34 @@ fn main() -> Result<()> {
                 vault.root().display(),
                 vault.root().display()
             );
+            Ok(())
+        }
+        Command::Statusline => {
+            let mut input = String::new();
+            let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
+            let v: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
+            let session = v["session_id"].as_str().unwrap_or("");
+            let line = match open_vault(cli.vault) {
+                Ok(vault) => {
+                    let cwd = v["workspace"]["current_dir"]
+                        .as_str()
+                        .or_else(|| v["cwd"].as_str())
+                        .map(PathBuf::from);
+                    let project = cwd.and_then(|cwd| {
+                        let settings = Settings::load().ok()?;
+                        Resolver::new(&vault, settings.access().ok()?)
+                            .resolve(&cwd)
+                            .project
+                    });
+                    let now = chrono::Local::now().timestamp();
+                    sbrain_core::pulse::line(
+                        project.as_deref(),
+                        sbrain_core::pulse::last(&vault, session, now),
+                    )
+                }
+                Err(_) => "sbrain · no vault".to_owned(),
+            };
+            println!("{line}");
             Ok(())
         }
         Command::Fact { action } => fact(action, cli.vault),

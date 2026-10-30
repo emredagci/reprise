@@ -72,6 +72,12 @@ pub fn run(
         return Ok(None);
     }
 
+    let now = chrono::Local::now().timestamp();
+    let pulse = |words: &str| {
+        if let Some(session) = field("session_id") {
+            sbrain_core::pulse::note(vault, session, words, now);
+        }
+    };
     let text = match event {
         Event::ToolUse => {
             let written = payload
@@ -93,6 +99,15 @@ pub fn run(
             let problems = sbrain_core::doctor::record_problems(vault, &written);
             if problems.is_empty() {
                 commit_edit(vault, &written);
+            }
+            if written.starts_with(vault.root()) && !rel.starts_with(".sbrain") {
+                pulse(&if !masked.is_empty() {
+                    format!("masked a secret in {rel}")
+                } else if problems.is_empty() {
+                    format!("saved {rel}")
+                } else {
+                    format!("{rel} needs a fix")
+                });
             }
             let mut notes = Vec::new();
             if !masked.is_empty() {
@@ -137,7 +152,8 @@ pub fn run(
                     .iter()
                     .map(|m| (m.at.as_str(), m.text.as_str()))
                     .collect();
-                sbrain_core::compact::keep(vault, session, &messages)?;
+                let kept = sbrain_core::compact::keep(vault, session, &messages)?;
+                pulse(&format!("kept {kept} of your messages through compaction"));
             }
             None
         }
@@ -156,6 +172,9 @@ pub fn run(
             {
                 text.push_str("\n\n");
                 text.push_str(&kept);
+                pulse("handed your messages back after compaction");
+            } else {
+                pulse("context loaded");
             }
             Some(text)
         }
@@ -174,6 +193,11 @@ pub fn run(
             if let Some(related) =
                 related_records(vault, access, &cwd, field("prompt").unwrap_or(""))?
             {
+                let n = related.lines().filter(|l| l.starts_with("- ")).count();
+                pulse(&format!(
+                    "{n} related record{} recalled",
+                    if n == 1 { "" } else { "s" }
+                ));
                 parts.push(related);
             }
             (!parts.is_empty()).then(|| parts.join("\n\n"))
