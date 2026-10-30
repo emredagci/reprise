@@ -8,7 +8,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-const ANSWER: &str = r#"{"is_error":false,"subtype":"success","structured_output":{"card":{"done":["Cached the login query"],"decisions":[],"open":[],"next_step":"Measure it.","uncertain":[]},"new_items":[{"title":"Cache the login query","type":"feature","status":"done-unverified","problem":"Slow.","solution":"Cached.","files":[],"aliases":[],"commit":"","verify":"cargo test login","evidence":["cache the login query"]}],"item_updates":[],"new_decisions":[],"rules":[],"state":null}}"#;
+const ANSWER: &str = r#"{"is_error":false,"subtype":"success","structured_output":{"card":{"done":["Cached the login query"],"decisions":[],"open":[],"next_step":"Measure it.","uncertain":[]},"new_items":[{"title":"Cache the login query","type":"feature","status":"done-unverified","problem":"Slow.","solution":"Cached.","files":[],"aliases":[],"commit":"","verify":"cargo test login","evidence":["cache the login query"]}],"item_updates":[],"new_decisions":[],"rules":[],"facts":[],"events":[],"state":null}}"#;
 
 struct Env {
     _tmp: tempfile::TempDir,

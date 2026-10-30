@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["card", "new_items", "item_updates", "new_decisions", "rules", "state"],
+  "required": ["card", "new_items", "item_updates", "new_decisions", "rules", "facts", "events", "state"],
   "properties": {
     "card": {
       "type": "object",
@@ -78,6 +78,35 @@
         "properties": {
           "scope": { "type": "string", "enum": ["project", "general"] },
           "rule": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "value", "from", "evidence"],
+        "properties": {
+          "key": { "type": "string" },
+          "value": { "type": "string" },
+          "from": { "type": "string" },
+          "evidence": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["what", "kind", "status", "when", "evidence"],
+        "properties": {
+          "what": { "type": "string" },
+          "kind": { "type": "string" },
+          "status": { "type": "string", "enum": ["done", "planned", "cancelled"] },
+          "when": { "type": "string" },
           "evidence": { "type": "array", "items": { "type": "string" } }
         }
       }

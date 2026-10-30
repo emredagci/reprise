@@ -29,6 +29,12 @@ current project's context from it; this file says how to read and keep it.
   start says some are waiting, tell the user; run `sbrain rule accept <id>` only for the ones they agree
   to (it asks them first). Never copy one into `rules.md` or `gotchas.md` yourself.
 - Keep `state.md` current and short (about 2000 characters): what works, what does not, how to run it.
+- A value that holds for a while and may change (a version, a port, a host) → `sbrain fact set <key> <value>
+  --from <date>`; the old value is closed, never edited away. Something that happened once or is planned
+  (a release, a deploy, an incident) → `sbrain event add <what> --when <date> --kind <word>`. Give dates as
+  they were said ("yesterday", "geçen salı", "2026-10"); sbrain resolves them.
+- For "when", "how long ago", "how many times": quote `sbrain timeline` and `sbrain fact list --at <date>`;
+  do not work dates or counts out yourself.
 - Never write keys, tokens or passwords into the vault: it is pushed to a remote. Name where a secret lives
   (`the OPENROUTER_API_KEY variable`), not its value. sbrain masks what looks like one as `[redacted]`.
 - After a compaction, session start hands back the user's own messages from before it under "Kept through
@@ -45,6 +51,8 @@ current project's context from it; this file says how to read and keep it.
 | `projects/<name>/project.toml` | id prefix and git remotes |
 | `projects/<name>/state.md` | current state |
 | `projects/<name>/gotchas.md` | project-specific pitfalls and rules |
+| `projects/<name>/facts.md`, `profile/facts.md` | values with the dates they held |
+| `projects/<name>/events.md` | what happened once or is planned |
 | `proposed-rules.md` (in `profile/` and each project) | rules the sweep proposed; not in effect |
 | `projects/<name>/items/<id>-<slug>.md` | bugs, features, ideas, debt |
 | `projects/<name>/decisions/<id>-<slug>.md` | decisions |

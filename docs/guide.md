@@ -228,6 +228,9 @@ The sweep's settings in the vault are under `[sweep]` in `.sbrain/vault.toml`.
 | `sbrain overview`, `sbrain items`, `sbrain decisions`, `sbrain sessions`, `sbrain graph` | The vault as JSON |
 | `sbrain uninstall [--yes]` | Remove what sbrain set up on this computer except the vault; then remove the program |
 | `sbrain status [--json]` | Everything sbrain does on this computer and what needs you; changes nothing |
+| `sbrain fact set <key> <value> [--from <date>] [--to <date>]`, `fact end <key>`, `fact list [--at <date>] [--all]` | Facts with the dates they held; a new value closes the old one (`--general` for no single project) |
+| `sbrain event add <what> [--when <date>] [--kind <word>] [--status done\|planned\|cancelled]`, `event list` | Things that happened once or are planned |
+| `sbrain timeline [--kind <word>] [--since <date>] [--json]` | Events in order with counts, gaps and how long ago, computed for today |
 | `sbrain doctor [--quick] [--json]` | Check the vault; changes nothing |
 | `sbrain sweep [--due] [--dry-run] [--json]` | Distill sessions that ended without a handoff card |
 | `sbrain sweep schedule [--every <hours>] [--per-run <n>]`, `sbrain sweep unschedule` | Have this computer run the sweep by itself |

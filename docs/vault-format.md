@@ -36,12 +36,15 @@ vault (`AGENTS.md`) follow it.
   profile/
     user.md                 who the user is and how they work
     rules.md                rules that apply to every project
+    facts.md                facts about no single project
   notes/                    knowledge that belongs to no single project
   projects/
     <project>/
       project.toml          id prefix and repository remotes
       state.md              current state, kept short
       gotchas.md            project-specific pitfalls and rules
+      facts.md              values that hold for a while, with their dates
+      events.md             what happened once or is planned, in order
       items/                one file per bug, feature, idea or debt
       decisions/            one file per decision
       sessions/             handoff cards
@@ -238,6 +241,52 @@ they came from: `- 2026-10-26 (1a2b3c4d): Measure before caching.` No agent read
 only says how many wait. `sbrain rule list` shows them with an id, `sbrain rule accept <id>` moves one
 into `gotchas.md` or `profile/rules.md`, `sbrain rule reject <id>` drops it.
 
+### `facts.md`
+
+Values that hold for a while and change: a version, a port, a host, a service in use, a limit. One table,
+written by `sbrain fact` and the sweep:
+
+```markdown
+| Key | Value | From | To | Source | Noted |
+| --- | --- | --- | --- | --- | --- |
+| node version | 20 | 2026-03 | 2026-10-20 | api-0012 | 2026-03-04 |
+| node version | 22 | 2026-10-20 |  | transcript 1a2b3c4d | 2026-10-20 |
+```
+
+`From` is when it became true, `To` when it stopped (empty while it holds), `Noted` when it was written
+down. A date is a day, a month (`2026-03`), a year or a span (`2026-10-19..2026-10-25`): a date known only to
+the month is never made into a day. A new value closes the one the key holds; rows are never deleted, so
+"what was it in September" is a lookup (`sbrain fact list --at 2026-09-15`) and an old value never passes
+for the current one. Keys match ignoring case and spacing. A value from before the current one began is
+history and is written with its end (`--to`). `sbrain fact end <key>` closes one with nothing in its place.
+`profile/facts.md` holds facts about no single project (`--general`).
+
+### `events.md`
+
+What happened once, or is planned: a release, a deploy, an incident, a migration. One table, in the order
+they happen:
+
+```markdown
+| When | What | Kind | Status | Said | Source |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-27 | Released 0.1.0 | release | done | 2026-10-27 | transcript 1a2b3c4d |
+| 2026-11 | Release 0.2.0 | release | planned | 2026-10-30 |  |
+```
+
+`When` is when it happened, kept apart from `Said`, when it was said. `Kind` is one lowercase word;
+`Status` is `done`, `planned` or `cancelled`. The same event (same `When`, same words) is written once.
+`sbrain timeline` writes the timeline by code: the events in order with how long ago each was, and per
+kind how many happened, the latest, the average gap and the next planned one. Agents quote it instead of
+working dates out.
+
+### Dates in words
+
+`sbrain fact`, `sbrain event` and the sweep take dates as they were said and resolve them against the day
+they were said: `today`, `yesterday`, `dün`, `evvelsi gün`, `3 days ago`, `üç gün önce`, `last week`,
+`geçen ay`, `this year`, `geçen salı`, `next monday`, `in March`, `3 mart`, `March 3, 2024`, and written
+dates (`2026-10-27`, `2026-10`, `2026`, `27.10.2026`). A week, month or year stays a span. Words it does not
+understand are refused, never guessed.
+
 ### `profile/user.md`
 
 Free text about the user: language, tone, tools, how they like to work. It is read at every session start.
@@ -255,7 +304,9 @@ Free text about the user: language, tone, tools, how they like to work. It is re
 
 The session-start hook prints, within 6000 characters: the project and repository, `profile/user.md`,
 `profile/rules.md`, the project's `state.md`, `gotchas.md`, open work (counts, doing, unverified, planned,
-inbox, possibly stale verified items, the last handoff's next step), the doctor's summary when it found
+inbox, possibly stale verified items, the last handoff's next step), the facts that hold now (the project's
+and the general ones), the latest events and the next planned ones with how long ago or how soon each is,
+computed for that day, the doctor's summary when it found
 problems, and a short protocol pointing at `AGENTS.md`. A file that does not fit is cut and named, so the
 agent knows to open it. Possibly stale items are what the last full `sbrain doctor` found (`stale.json`):
 checking runs git for every file of every verified item, so session start never checks itself, and starts
@@ -304,6 +355,8 @@ the engine CLI. Claude Code keeps `<config dir>/projects/<folder>/<session>.json
    settings a remote synced into the vault apply), without tools, hooks or a saved session, and answers
    with JSON only. sbrain checks the answer and writes the records itself: new items (never `verified`),
    changes to the project's open items, decisions, proposed rules (`proposed-rules.md`, not in effect),
+   facts and events (their dates as the session said them, resolved against the day of the message the
+   quote is in; a date it cannot resolve leaves the fact or event out),
    `state.md` while it is still the template, and the session's card with `source: transcript`. An answer
    that does not pass the checks writes nothing. In the transcript it reads, the text of tools and of the
    assistant is indented, so none of it can pass for the user's own words, and secrets are masked.
