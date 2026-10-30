@@ -9,8 +9,12 @@ current project's context from it; this file says how to read and keep it.
 - Answer questions about the past ("what did we do", "why is it like this", "what is open") from the
   records: `state.md`, `items/`, `decisions/`. Session cards are sources, not answers.
 - Say what you read and what you could not find. Never present a partial answer as complete.
-- Search with several phrasings (synonyms, error codes, file names), and read partial matches too: the
-  missing piece is often there.
+- Before answering, check the question's premise against the records: if it assumes something that is not
+  on record ("when did we drop Redis?" with no record of Redis), say so first instead of answering around
+  it. "Not on record" is a finding, not a failure; never fill the gap with what seems likely.
+- Search with several phrasings at once: `sbrain search "<phrasing>" "<another>" …` (synonyms, error codes,
+  file names). Read partial matches and the records linked to the hits too: the missing piece is often
+  there. `terms_without_any_match` lists what the vault has nothing on.
 - When a record disagrees with the code, the code wins: fix the record.
 
 ## Keeping it

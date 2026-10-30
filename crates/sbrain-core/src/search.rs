@@ -1,6 +1,9 @@
 //! Multi-query search over a project's records, notes and profile files.
 //! Each query matches a record when at least 60% of its terms match; below that it is a partial
-//! match, reported separately because the missing piece of an answer often sits there.
+//! match, reported separately because the missing piece of an answer often sits there. Records linked
+//! to a hit (its `related`, records whose `related` names it, records that mention its id) are
+//! reported too, one step away: a question about "the login cache" finds the decision behind it even
+//! when the decision never says "cache".
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -10,7 +13,7 @@ use crate::report::markdown_files;
 use crate::text::tokens;
 use crate::{Result, Vault};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Hit {
     pub kind: &'static str,
     pub project: Option<String>,
@@ -22,14 +25,23 @@ pub struct Hit {
     pub matched: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct SearchResult {
     pub scanned: BTreeMap<&'static str, usize>,
     pub total_hits: usize,
     /// Best first, at most `limit`.
     pub hits: Vec<Hit>,
     pub partial_matches: Vec<Hit>,
+    /// Records one link away from the hits, not hits themselves; `matched` says through which.
+    pub linked: Vec<Hit>,
     pub terms_without_any_match: Vec<String>,
+}
+
+/// What a record links to: its id, its `related` ids and its text, to find links both ways.
+struct Links {
+    id: String,
+    related: Vec<String>,
+    body: String,
 }
 
 pub fn search(
@@ -49,6 +61,8 @@ pub fn search(
     let mut result = SearchResult::default();
     let mut hits = Vec::new();
     let mut partial = Vec::new();
+    // Every record, as a hit with no score, and its links.
+    let mut all: Vec<(Hit, Links)> = Vec::new();
     for (kind, project, path) in corpus(vault, projects) {
         *result.scanned.entry(kind).or_insert(0) += 1;
         let record = Record::read(&path)?;
@@ -112,6 +126,14 @@ pub fn search(
             score,
             matched: words.into_iter().collect(),
         };
+        all.push((
+            hit(BTreeSet::new(), 0),
+            Links {
+                id: id.clone(),
+                related: record.get("related").map(|v| v.items()).unwrap_or_default(),
+                body: record.body.clone(),
+            },
+        ));
         if matched.is_empty() {
             if !weak.is_empty() {
                 partial.push(hit(weak, 0));
@@ -126,12 +148,52 @@ pub fn search(
     result.total_hits = hits.len();
     result.hits = hits.into_iter().take(limit).collect();
     result.partial_matches = partial.into_iter().take(limit).collect();
+    result.linked = linked(&result.hits, &all, limit);
     result.terms_without_any_match = seen
         .into_iter()
         .filter(|(_, s)| !s)
         .map(|(t, _)| t)
         .collect();
     Ok(result)
+}
+
+/// Records one link away from `hits` that are not hits: named in a hit's `related`, naming a hit in
+/// theirs, or mentioning a hit's id; each with the hit it came through in `matched`.
+fn linked(hits: &[Hit], all: &[(Hit, Links)], limit: usize) -> Vec<Hit> {
+    let is_id = |id: &str| id.contains('-') && id.chars().any(|c| c.is_ascii_digit());
+    let hit_ids: BTreeSet<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+    let mut out: Vec<Hit> = Vec::new();
+    for h in hits {
+        let Some((_, from)) = all.iter().find(|(r, _)| r.path == h.path) else {
+            continue;
+        };
+        for (record, links) in all {
+            if hit_ids.contains(links.id.as_str()) || out.iter().any(|o| o.path == record.path) {
+                continue;
+            }
+            let link = from.related.contains(&links.id)
+                || links.related.contains(&h.id)
+                || (is_id(&h.id) && mentions(&links.body, &h.id))
+                || (is_id(&links.id) && mentions(&from.body, &links.id));
+            if link {
+                let mut r = record.clone();
+                r.matched = vec![format!("via {}", h.id)];
+                out.push(r);
+            }
+        }
+    }
+    out.truncate(limit);
+    out
+}
+
+/// Whether `text` names `id` as a whole word (`app-0001`, not `app-00010`).
+fn mentions(text: &str, id: &str) -> bool {
+    text.match_indices(id).any(|(at, _)| {
+        let before = text[..at].chars().next_back();
+        let after = text[at + id.len()..].chars().next();
+        let part = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '-');
+        !part(before) && !part(after)
+    })
 }
 
 /// A rough stem match for Turkish suffixes. Terms of 4+ characters match any
@@ -211,6 +273,45 @@ mod tests {
         let p = root.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
+    }
+
+    #[test]
+    fn records_one_link_away_are_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let vault = crate::vault::tests::new_vault(root);
+        w(
+            root,
+            "projects/p/items/p-0001-x.md",
+            "---\nid: p-0001\ntitle: Login cache\nstatus: doing\nrelated: [p-D-0002]\n---\nCache it.\n",
+        );
+        w(
+            root,
+            "projects/p/decisions/p-D-0002-x.md",
+            "---\nid: p-D-0002\ntitle: Per request only\nstatus: accepted\n---\nNo global state.\n",
+        );
+        w(
+            root,
+            "projects/p/items/p-0003-x.md",
+            "---\nid: p-0003\ntitle: Measure it\nstatus: inbox\nrelated: [p-0001]\n---\nAfter p-0001.\n",
+        );
+        w(
+            root,
+            "projects/p/items/p-0004-x.md",
+            "---\nid: p-0004\ntitle: Unrelated\nstatus: inbox\n---\nSee p-00010, not it.\n",
+        );
+        let r = search(&vault, &["p".into()], &["login cache".into()], 10).unwrap();
+        assert_eq!(r.hits.len(), 1);
+        let linked: Vec<(&str, &str)> = r
+            .linked
+            .iter()
+            .map(|h| (h.id.as_str(), h.matched[0].as_str()))
+            .collect();
+        assert_eq!(
+            linked,
+            [("p-0003", "via p-0001"), ("p-D-0002", "via p-0001")],
+            "both directions, and not a longer id"
+        );
     }
 
     #[test]

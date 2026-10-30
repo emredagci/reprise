@@ -176,13 +176,14 @@ pub fn session_start(
         if let Some(gotchas) = body(&root.join("gotchas.md"), 800)? {
             parts.push(format!("## {p} gotchas\n{gotchas}"));
         }
-        if let Some(facts) = facts_block(vault, p) {
+        let reset = crate::reset::active(vault, p);
+        if let Some(facts) = facts_block(vault, p, reset) {
             parts.push(facts);
         }
-        if let Some(events) = events_block(vault, p, today) {
+        if let Some(events) = events_block(vault, p, today, reset) {
             parts.push(events);
         }
-        let lines = open_work(vault, p, today)?;
+        let lines = open_work(vault, p, today, reset)?;
         if !lines.is_empty() {
             parts.push(format!("## Open work\n{}", lines.join("\n")));
         }
@@ -224,11 +225,17 @@ const EVENTS_LIMIT: usize = 500;
 const EVENTS_SHOWN: usize = 4;
 
 /// The facts that hold now, the project's and those about no single project.
-fn facts_block(vault: &Vault, project: &str) -> Option<String> {
+fn facts_block(vault: &Vault, project: &str, reset: Option<NaiveDate>) -> Option<String> {
     let mut lines = Vec::new();
     for scope in [Some(project), None] {
         let facts = crate::facts::read(vault, scope).unwrap_or_default();
-        for f in crate::facts::current(&facts) {
+        // After a project's reset, a project fact from before it is no longer current.
+        let before_reset =
+            |f: &crate::facts::Fact| scope.is_some() && reset.is_some_and(|r| f.from.start < r);
+        for f in crate::facts::current(&facts)
+            .into_iter()
+            .filter(|f| !before_reset(f))
+        {
             lines.push(format!(
                 "- {}: {} (since {})",
                 f.key,
@@ -246,8 +253,14 @@ fn facts_block(vault: &Vault, project: &str) -> Option<String> {
 }
 
 /// The latest events and the next planned ones, with how long ago, computed for today.
-fn events_block(vault: &Vault, project: &str, today: NaiveDate) -> Option<String> {
-    let events = crate::events::read(vault, project).ok()?;
+fn events_block(
+    vault: &Vault,
+    project: &str,
+    today: NaiveDate,
+    reset: Option<NaiveDate>,
+) -> Option<String> {
+    let mut events = crate::events::read(vault, project).ok()?;
+    events.retain(|e| reset.is_none_or(|r| e.when.end >= r));
     let done: Vec<&crate::events::Event> = events
         .iter()
         .filter(|e| e.status == "done" && e.when.start <= today)
@@ -300,9 +313,36 @@ fn proposals_line(vault: &Vault, project: Option<&str>) -> Option<String> {
     })
 }
 
-fn open_work(vault: &Vault, project: &str, today: NaiveDate) -> Result<Vec<String>> {
-    let r = report(vault, project, today)?;
+fn open_work(
+    vault: &Vault,
+    project: &str,
+    today: NaiveDate,
+    reset: Option<NaiveDate>,
+) -> Result<Vec<String>> {
+    let mut r = report(vault, project, today)?;
     let mut lines = Vec::new();
+    if let Some(day) = reset {
+        // Work not touched since the reset is left out; it stays in the vault and in search.
+        let touched = |it: &crate::report::Row| it.updated.is_none_or(|u| u >= day);
+        for rows in [
+            &mut r.doing,
+            &mut r.done_unverified,
+            &mut r.planned,
+            &mut r.inbox,
+            &mut r.stale_verified,
+        ] {
+            rows.retain(|it| touched(it));
+        }
+        if r.last_session
+            .as_ref()
+            .is_some_and(|ls| ls.date.as_str() < day.format("%Y-%m-%d").to_string().as_str())
+        {
+            r.last_session = None;
+        }
+        lines.push(format!(
+            "Reset on {day}: what came before is left out here (`sbrain items`, `sbrain search` still have it)."
+        ));
+    }
     if !r.counts.is_empty() {
         lines.push(
             r.counts
@@ -649,6 +689,54 @@ mod tests {
             text.contains("- 2026-11-02 · release · Ship billing [planned] (in 8 days)"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_reset_leaves_the_past_out_of_session_start() {
+        let env = Env::new();
+        let repo = env.repo("code/api", None);
+        env.write(
+            "projects/api/facts.md",
+            "| Key | Value | From | To | Source | Noted |\n| --- | --- | --- | --- | --- | --- |\n\
+             | team | old | 2026-01 |  |  | 2026-01-01 |\n\
+             | port | 9090 | 2026-10-21 |  |  | 2026-10-21 |\n",
+        );
+        env.write(
+            "projects/api/events.md",
+            "| When | What | Kind | Status | Said | Source |\n| --- | --- | --- | --- | --- | --- |\n\
+             | 2026-10-01 | Old launch | release | done | 2026-10-01 |  |\n\
+             | 2026-10-22 | New launch | release | done | 2026-10-22 |  |\n",
+        );
+        env.write(
+            "projects/api/items/api-0001-a.md",
+            "---\nid: api-0001\ntitle: Old work\nstatus: doing\nupdated: 2026-10-01\n---\n",
+        );
+        env.write(
+            "projects/api/items/api-0002-b.md",
+            "---\nid: api-0002\ntitle: New work\nstatus: doing\nupdated: 2026-10-23\n---\n",
+        );
+        let before = env.start(&repo);
+        assert!(
+            before.contains("team: old") && before.contains("Old work"),
+            "{before}"
+        );
+
+        crate::reset::reset(&env.vault, "api", day() - chrono::Duration::days(5), "").unwrap();
+        let after = env.start(&repo);
+        assert!(after.contains("Reset on 2026-10-20"), "{after}");
+        assert!(!after.contains("team: old"), "{after}");
+        assert!(after.contains("port: 9090"), "{after}");
+        assert!(
+            !after.contains("Old launch") && after.contains("New launch"),
+            "{after}"
+        );
+        assert!(
+            !after.contains("Old work") && after.contains("New work"),
+            "{after}"
+        );
+
+        crate::reset::undo(&env.vault, "api", day()).unwrap();
+        assert!(env.start(&repo).contains("Old work"));
     }
 
     #[test]

@@ -17,6 +17,8 @@ pub struct Row {
     pub title: String,
     /// Days since `updated`; set for done-unverified items only.
     pub age_days: Option<i64>,
+    /// `updated` (else `created`), when it is a date.
+    pub updated: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +63,9 @@ pub fn report(vault: &Vault, project: &str, today: NaiveDate) -> Result<ProjectR
                 .and_then(|v| v.as_text())
                 .map_or_else(|| stem(&path), str::to_owned),
             title: record.text("title").to_owned(),
+            updated: ["updated", "created"]
+                .iter()
+                .find_map(|k| NaiveDate::parse_from_str(record.text(k), "%Y-%m-%d").ok()),
             age_days: (status == "done-unverified")
                 .then(|| {
                     NaiveDate::parse_from_str(record.text("updated"), "%Y-%m-%d")
