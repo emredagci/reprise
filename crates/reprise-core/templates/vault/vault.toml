@@ -1,5 +1,5 @@
 # reprise vault. Format: docs/vault-format.md in the reprise repository.
-format = 2
+format = 3
 
 [projects]
 # Folders that hold unrelated sub-projects: `<folder>/<container>/<name>` is project `<name>`.

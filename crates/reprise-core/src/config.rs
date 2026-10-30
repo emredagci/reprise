@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 /// The vault format this binary reads and writes.
-pub const FORMAT: u32 = 2;
+pub const FORMAT: u32 = 3;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn window_uses_longest_fragment_and_default() {
         let cfg = Config::parse(
-            "format = 2\n[hooks.context_windows]\nson = 5\nsonnet = 1000000\ndefault = 200000\n",
+            "format = 3\n[hooks.context_windows]\nson = 5\nsonnet = 1000000\ndefault = 200000\n",
         )
         .unwrap();
         assert_eq!(cfg.hooks.context_window("claude-sonnet-5", 1), 1_000_000);
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn sweep_settings_fall_back_to_defaults() {
-        let cfg = Config::parse("format = 2\n[sweep]\nmax_per_run = 1\n").unwrap();
+        let cfg = Config::parse("format = 3\n[sweep]\nmax_per_run = 1\n").unwrap();
         assert_eq!(cfg.sweep.max_per_run, 1);
         assert_eq!(cfg.sweep.settle_minutes, 60);
         assert!(cfg.sweep.skip_cwd_prefixes.contains(&"/tmp/".to_owned()));

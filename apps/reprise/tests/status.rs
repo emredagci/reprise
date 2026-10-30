@@ -112,7 +112,7 @@ fn a_set_up_computer_needs_nothing_and_shows_where_the_hooks_point() {
     assert!(text.contains("(this reprise)"), "{text}");
     assert!(text.contains("Nothing needs you."));
 
-    // Hooks that run an reprise that is gone are reported, and status leaves them as they are.
+    // Hooks that run a reprise that is gone are reported, and status leaves them as they are.
     let mut m: Value =
         serde_json::from_str(&std::fs::read_to_string(env.manifest()).unwrap()).unwrap();
     m["reprise"] = env.root.join("gone/reprise").to_string_lossy().into();

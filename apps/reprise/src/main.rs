@@ -1,5 +1,4 @@
 mod schedule;
-mod serve;
 mod status;
 mod sweep;
 mod uninstall;
@@ -147,13 +146,6 @@ enum Command {
     /// Claude Code status line: reads its JSON on stdin and prints what reprise last did in the session.
     /// Set it with `"statusLine": {"type": "command", "command": "reprise statusline"}`.
     Statusline,
-    /// Serves the vault over HTTP on 127.0.0.1 for other tools: status, search, facts, timeline and
-    /// the hooks. Optional; nothing else needs it.
-    Serve {
-        /// 0 picks a free port; the one used is printed first.
-        #[arg(long, default_value_t = 7448)]
-        port: u16,
-    },
     /// Every item with its sections, newest first, as JSON.
     Items,
     /// Checks the vault: broken records, unverified or forgotten work, stale items, broken links,
@@ -690,16 +682,6 @@ fn main() -> Result<()> {
                 vault.root().display()
             );
             Ok(())
-        }
-        Command::Serve { port } => {
-            let vault = open_vault(cli.vault)?;
-            serve::serve(&vault, port, |port| {
-                println!(
-                    "reprise serves {} on http://127.0.0.1:{port}",
-                    vault.root().display()
-                );
-                let _ = std::io::Write::flush(&mut std::io::stdout());
-            })
         }
         Command::Statusline => {
             let mut input = String::new();

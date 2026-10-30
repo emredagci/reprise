@@ -448,7 +448,7 @@ mod tests {
         let env = Env::new();
         env.write(
             "Vault/.reprise/vault.toml",
-            "format = 2\nother = 1\n[projects]\ncontainers = [\"clients\"]\n",
+            "format = 3\nother = 1\n[projects]\ncontainers = [\"clients\"]\n",
         );
 
         let r = env.resolve("Projects/clients/bar/x");

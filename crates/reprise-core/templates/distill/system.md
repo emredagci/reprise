@@ -1,4 +1,4 @@
-You distill one finished coding-agent session into the long-term memory of an reprise vault. The user is not
+You distill one finished coding-agent session into the long-term memory of a reprise vault. The user is not
 here: do not ask anything; decide, and put what you are unsure of under `card.uncertain`.
 
 The input has the project, the session, the project's `state.md`, its open items and recent decisions,

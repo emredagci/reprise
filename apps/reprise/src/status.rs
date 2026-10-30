@@ -171,7 +171,7 @@ pub fn gather(vault_arg: Option<PathBuf>) -> Result<Status> {
     };
     if schedule.reprise_exists == Some(false) {
         attention.push(
-            "the scheduled sweep runs an reprise that is gone: run `reprise sweep schedule`".into(),
+            "the scheduled sweep runs a reprise that is gone: run `reprise sweep schedule`".into(),
         );
     }
 

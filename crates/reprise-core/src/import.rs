@@ -1,4 +1,4 @@
-//! Imports a format 1 vault into a format 2 vault. The source is only read; the target only
+//! Imports a format 1 vault into a vault of the current format. The source is only read; the target only
 //! gains files. A file that already exists in the target is never overwritten: identical content counts
 //! as already imported, anything else is reported as a conflict and left alone. The only exceptions
 //! are the profile files while they still hold their untouched templates.
@@ -23,7 +23,7 @@ const RECORD_ROOTS: &[(&str, &str)] = &[
 /// Top-level entries that are neither records nor tooling worth mentioning.
 const IGNORED: &[&str] = &[".git", ".DS_Store"];
 
-/// Format 1 headings → format 2, per kind of record. A heading may carry a suffix such as a date:
+/// Format 1 headings → the current format, per kind of record. A heading may carry a suffix such as a date:
 /// `## Çalışıyor (2026-10-24)` becomes `## Working (2026-10-24)`.
 const ITEM_HEADINGS: &[(&str, &str)] = &[
     ("Belirti", "Problem"),
@@ -738,6 +738,7 @@ mod tests {
         ));
         let inner = env.vault.root().join("notes/inner");
         fs::create_dir_all(inner.join("projects")).unwrap();
+        fs::create_dir_all(inner.join("companion")).unwrap();
         assert!(matches!(
             plan(&inner, &env.vault),
             Err(Error::ImportOverlap(_))
