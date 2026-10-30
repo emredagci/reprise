@@ -345,6 +345,8 @@ agent needs arrives through the hook and the vault's own `AGENTS.md`.
 | `sweep.json` | when sweeping started, and the last run |
 | `ledger.sqlite` | the job ledger: each session's distilling, sessions reported as ended, and vault commits that failed, with their attempts, last error and next try |
 | `sweep.lock` | held while `sbrain sweep` runs, so two runs never overlap |
+| `pulse/<session>.json` | what sbrain last did in that session, for `sbrain statusline` |
+| `vectors.sqlite` | meaning-search vectors by file, model and content |
 | `sessions/<session>.json` | each distilled session's digest and user messages (secrets masked) and the engine's answer: the session outlives its transcript, and `sbrain sweep replay <session>` writes its records again without the engine |
 | `compact/<session>.md`, `compact/<session>.instructions.md` | the user's messages kept through a compaction, and the instructions among them; removed after 14 days |
 

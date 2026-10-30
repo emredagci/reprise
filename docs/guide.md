@@ -107,6 +107,15 @@ In manual mode, `sbrain access add <path>` and `sbrain access remove <path>` edi
 `sbrain engine` shows which of them runs sbrain's own work (the sweep) and with which model and effort, and the
 choices; `sbrain engine set claude --model sonnet --effort medium` changes them.
 
+OpenRouter can be the engine too: `sbrain engine set openrouter --model <id>` distills with any model it
+serves (`typesafe/jev-router` among them). The key is `OPENROUTER_API_KEY`, or the file `openrouter.key`
+beside sbrain's settings, which the scheduled sweep can read. Requests go through the system's `curl`, the
+key on its stdin. OpenRouter only distills: it keeps no transcripts to sweep.
+
+Every record the engine returns carries quotes from the session and a confidence from 0 to 1; sbrain
+writes it only when a quote is found and the confidence is at least 0.6 (0.8 for a rule), and lists the
+rest on the session's card.
+
 Connecting Claude Code (`sbrain connect claude` shows the plan; `--yes` applies it) makes these changes:
 
 - SessionStart, UserPromptSubmit, SessionEnd, PostToolUse (after Edit and Write) and PreCompact hooks in
@@ -129,6 +138,21 @@ removes exactly that. Things that already existed are left alone, and each file 
 `*.sbrain-backup` before its first change. `CLAUDE_CONFIG_DIR` and `SBRAIN_BIN_DIR` redirect the targets.
 Codex cannot be connected; its sessions are swept when it is installed, and it can be the engine
 ([Sweep](#sweep)).
+
+## Status line, server and meaning search
+
+- **Status line.** `sbrain statusline` prints `sbrain · <project> · <what it last did>` (context loaded,
+  N related records recalled, messages kept through a compaction, a vault file saved or a secret masked),
+  from what the hooks noted in `.sbrain/cache/pulse/`. In `~/.claude/settings.json`:
+  `"statusLine": {"type": "command", "command": "sbrain statusline"}`. Connecting does not set it.
+- **Server.** `sbrain serve [--port 7448]` serves the vault over HTTP on 127.0.0.1 for other tools:
+  `GET /v1/status`, `POST /v1/search`, `GET /v1/facts?project=<p>[&at=<date>]`,
+  `GET /v1/timeline?project=<p>`, `POST /v1/hook/<event>`. A request must name `127.0.0.1` or
+  `localhost` as its host, and a POST must be `application/json`. Nothing else needs it.
+- **Meaning search.** `sbrain embeddings set --url <endpoint> --model <name> [--key-env VAR]` points at
+  an OpenAI-compatible embeddings endpoint (a local Ollama: `http://localhost:11434/v1/embeddings`);
+  `sbrain search --semantic` then also lists the records closest in meaning. Vectors are cached in
+  `.sbrain/cache/vectors.sqlite`; only changed records are sent again, secrets masked.
 
 ## Hooks
 
