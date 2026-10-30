@@ -6,6 +6,7 @@ pub mod claude;
 pub mod codex;
 mod digest;
 mod error;
+pub mod openrouter;
 mod path;
 mod process;
 
@@ -24,6 +25,7 @@ use path::{find_program, full_path};
 pub enum ClientId {
     Claude,
     Codex,
+    OpenRouter,
 }
 
 impl ClientId {
@@ -31,6 +33,7 @@ impl ClientId {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::OpenRouter => "openrouter",
         }
     }
 }
@@ -177,7 +180,11 @@ pub trait Connector: Send + Sync {
 }
 
 pub fn all() -> Vec<Box<dyn Client>> {
-    vec![Box::new(claude::Claude), Box::new(codex::Codex)]
+    vec![
+        Box::new(claude::Claude),
+        Box::new(codex::Codex),
+        Box::new(openrouter::OpenRouter),
+    ]
 }
 
 pub fn get(id: &str) -> Option<Box<dyn Client>> {
