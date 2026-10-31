@@ -11,6 +11,27 @@ keywords = ["claude-code", "memory", "agent", "markdown", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 include = ["src/**/*", "templates/**/*", "README.md", "LICENSE", "NOTICE"]
 
+# `cargo binstall reprise` installs the signed release archive instead of building. The archives name the
+# platform, not the Rust target, so each target says where its archive is.
+[package.metadata.binstall]
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.aarch64-apple-darwin]
+pkg-url = "{ repo }/releases/download/{ version }/{ name }-{ version }-macos-arm64.tar.gz"
+bin-dir = "{ name }-{ version }-macos-arm64/{ bin }{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-apple-darwin]
+pkg-url = "{ repo }/releases/download/{ version }/{ name }-{ version }-macos-x86_64.tar.gz"
+bin-dir = "{ name }-{ version }-macos-x86_64/{ bin }{ binary-ext }"
+
+[package.metadata.binstall.overrides.aarch64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/{ version }/{ name }-{ version }-linux-arm64.tar.gz"
+bin-dir = "{ name }-{ version }-linux-arm64/{ bin }{ binary-ext }"
+
+[package.metadata.binstall.overrides.x86_64-unknown-linux-gnu]
+pkg-url = "{ repo }/releases/download/{ version }/{ name }-{ version }-linux-x86_64.tar.gz"
+bin-dir = "{ name }-{ version }-linux-x86_64/{ bin }{ binary-ext }"
+
 [[bin]]
 name = "reprise"
 path = "src/cli/main.rs"
