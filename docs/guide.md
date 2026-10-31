@@ -69,14 +69,15 @@ but no `.reprise/vault.toml`) is not opened; import its records into a new vault
 the vault is overwritten:
 
 ```bash
-reprise import <format-1-vault>
+reprise import <format-1-vault> --map <headings.toml>
 ```
 
 ```bash
-reprise import <format-1-vault> --yes
+reprise import <format-1-vault> --map <headings.toml> --yes
 ```
 
-The first shows what would be written, the second writes it.
+The first shows what would be written, the second writes it. The map names what the old headings become
+([vault-format.md](vault-format.md), "Importing a format 1 vault"); without it they are copied as they are.
 
 A project's folder is created the first time a session starts in its repository. It is named after the
 repository and remembers the repository's git remote, so the same project is recognized on another machine
@@ -168,7 +169,7 @@ asked along the way, and the sweep has not distilled the session yet, so the use
 word for word, secrets masked, to `.reprise/cache/compact/<session>.md` (machine-local, removed after 14 days).
 The session start that follows the compaction adds them to its context under "Kept through compaction",
 within 3500 characters: messages that read like instructions or corrections first ("from now on", "never",
-"bundan sonra", "yazma"), then the newest, shown in the order they were written. The instructions among
+"don't", "instead"), then the newest, shown in the order they were written. The instructions among
 them also come with every prompt for the rest of the session, within 1500 characters, so the summary
 cannot push them out of view.
 
@@ -260,7 +261,7 @@ The sweep's settings in the vault are under `[sweep]` in `.reprise/vault.toml`.
 | `reprise reset [--on <date>] [--note …]`, `reprise reset --undo` | Leave a project's past out of session start from a day on; nothing is deleted |
 | `reprise export <file.tar.gz> [--history]`, `reprise restore <file> <folder>` | Move a vault as one file |
 | `reprise rule list`, `reprise rule accept <id>`, `reprise rule reject <id>` | Rules the sweep proposed, and putting one in effect |
-| `reprise import <folder> [--yes]` | Import a format 1 vault |
+| `reprise import <folder> [--map <file>] [--yes]` | Import a format 1 vault |
 
 `reprise <command> --help` describes each one.
 

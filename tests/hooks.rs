@@ -239,7 +239,7 @@ fn the_users_words_come_back_after_a_compaction() {
     );
     let transcript = root.join("t.jsonl");
     let lines: Vec<String> = [
-        "bundan sonra migration yazma, format bozulabilir",
+        "from now on, no migrations; the format may break",
         "ok",
         "now add the PreCompact hook",
     ]
@@ -287,7 +287,7 @@ fn the_users_words_come_back_after_a_compaction() {
     let after = start("compact");
     assert!(after.contains("## Kept through compaction"), "{after}");
     assert!(
-        after.contains("bundan sonra migration yazma, format bozulabilir"),
+        after.contains("from now on, no migrations; the format may break"),
         "{after}"
     );
     assert!(after.contains("now add the PreCompact hook"), "{after}");
@@ -301,7 +301,7 @@ fn the_users_words_come_back_after_a_compaction() {
     let prompt = serde_json::json!({
         "hook_event_name": "UserPromptSubmit",
         "session_id": "abc-123",
-        "prompt": "devam edelim",
+        "prompt": "let's carry on",
         "cwd": root
     });
     let out = reprise(&settings, &["hook", "prompt"], &prompt.to_string());
@@ -310,7 +310,7 @@ fn the_users_words_come_back_after_a_compaction() {
         .as_str()
         .unwrap();
     assert!(ctx.contains("Still in effect"), "{ctx}");
-    assert!(ctx.contains("bundan sonra migration yazma"), "{ctx}");
+    assert!(ctx.contains("from now on, no migrations"), "{ctx}");
     assert!(!ctx.contains("now add the PreCompact hook"), "{ctx}");
 
     // The status line says what reprise last did in the session.

@@ -298,9 +298,10 @@ as a vault; `reprise setup set` then makes it the one in use.
 ### Dates in words
 
 `reprise fact`, `reprise event` and the sweep take dates as they were said and resolve them against the day
-they were said: `today`, `yesterday`, `dün`, `evvelsi gün`, `3 days ago`, `üç gün önce`, `last week`,
-`geçen ay`, `this year`, `geçen salı`, `next monday`, `in March`, `3 mart`, `March 3, 2024`, and written
-dates (`2026-10-27`, `2026-10`, `2026`, `27.10.2026`). A week, month or year stays a span. Words it does not
+they were said: `today`, `yesterday`, `the day before yesterday`, `3 days ago`, `two weeks ago`, `last week`,
+`last month`, `this year`, `last tuesday`, `next monday`, `in March`, `3 March`, `March 3, 2024`, and written
+dates (`2026-10-27`, `2026-10`, `2026`, `27.10.2026`). The words are English; the sweep asks the engine to
+give a date said in another language in English words. A week, month or year stays a span. Words it does not
 understand are refused, never guessed.
 
 ### `profile/user.md`
@@ -400,14 +401,39 @@ their templates. Running it again writes nothing new.
 | --- | --- |
 | `companion/core.md`, `companion/rules.md` | `profile/user.md`, `profile/rules.md` |
 | `knowledge/`, `inbox/`, `archive/` | `notes/`, `notes/inbox/`, `notes/archive/` |
-| `projects/<p>/items/` headings Belirti, Kök neden, Çözüm, Doğrulama, Notlar | Problem, Cause, Solution, Verification, Notes |
-| `decisions/` headings Bağlam, Karar, Neden, Alternatifler | Context, Decision, Why, Alternatives |
-| `sessions/` headings Yapılan, Kararlar, Açık kalan, Belirsiz, Sonraki adım, Dokunulan kayıtlar; `source: devret` | Done, Decisions, Open, Uncertain, Next step, Touched records; `source: handoff` |
-| `state.md` headings Ne, Mimari, Çalışıyor, Çalışmıyor / bilinen sorunlar, Nasıl çalıştırılır / test edilir; `repo:` | What, Architecture, Working, Not working, Run and test; `repo:` dropped |
+| `projects/<p>/items/`, `decisions/`, `sessions/` | the same folders; headings and session `source:` values renamed by the map |
+| `state.md`; `repo:` | `state.md`, headings renamed by the map; `repo:` dropped |
 | `project.json`, `repo:` | `project.toml` (prefix from the item ids, remote from the repository's `origin`); the local path goes to `.reprise/cache/repos.json` |
 | `.claude/brain.json` `containers` | `[projects] containers` in `.reprise/vault.toml` |
 | other files under `projects/<p>/` | copied as they are |
 | `.claude/`, `.state/`, `templates/`, `skills/`, `agents/`, `prompts/`, `apps/`, `launchd/`, `CLAUDE.md` | not imported (tooling) |
 
-Headings inside code fences are not renamed; a heading with a suffix keeps it (`## Çalışıyor (2026-10-24)` →
-`## Working (2026-10-24)`).
+A format 1 vault names its headings in its own words, so the import renames them only with a map:
+`reprise import <folder> --map <file>`. The map is a TOML file; each table lists headings as they are and
+what they become, and `[session-source]` does the same for a session card's `source:` field. A table may be
+left out, and without a map headings and fields are copied as they are.
+
+```toml
+[headings.item]
+Symptom = "Problem"
+"Root cause" = "Cause"
+
+[headings.decision]
+Background = "Context"
+
+[headings.session]
+"Next" = "Next step"
+
+[headings.state]
+Runs = "Working"
+"Runs not / known issues" = "Not working"
+
+[session-source]
+wrapup = "handoff"
+```
+
+The current headings are Problem, Cause, Solution, Verification, Notes (items); Context, Decision, Why,
+Alternatives (decisions); Done, Decisions, Open, Uncertain, Next step, Touched records (sessions); What,
+Architecture, Working, Not working, Run and test (state). Headings inside code fences are not renamed; a
+heading with a suffix keeps it (`## Runs (2026-10-24)` → `## Working (2026-10-24)`), and the longest name
+that fits wins.

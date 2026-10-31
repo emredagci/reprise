@@ -36,7 +36,7 @@ current project's context from it; this file says how to read and keep it.
 - A value that holds for a while and may change (a version, a port, a host) → `reprise fact set <key> <value>
   --from <date>`; the old value is closed, never edited away. Something that happened once or is planned
   (a release, a deploy, an incident) → `reprise event add <what> --when <date> --kind <word>`. Give dates as
-  they were said ("yesterday", "geçen salı", "2026-10"); reprise resolves them.
+  they were said, in English words ("yesterday", "last tuesday", "2026-10"); reprise resolves them.
 - For "when", "how long ago", "how many times": quote `reprise timeline` and `reprise fact list --at <date>`;
   do not work dates or counts out yourself.
 - Never write keys, tokens or passwords into the vault: it is pushed to a remote. Name where a secret lives

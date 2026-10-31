@@ -527,10 +527,13 @@ mod tests {
 
     #[test]
     fn masking_is_idempotent_and_keeps_unicode() {
-        let text = "şifre: PASSWORD=ğüş1234abcd ve token sk-proj-abcdefghij0123456789xyz";
+        let text = "mot de passe: PASSWORD=éèà1234abcd and token sk-proj-abcdefghij0123456789xyz";
         let once = masked(text);
         assert_eq!(masked(&once), once);
-        assert!(once.starts_with("şifre: PASSWORD=[redacted]"), "{once}");
+        assert!(
+            once.starts_with("mot de passe: PASSWORD=[redacted]"),
+            "{once}"
+        );
         assert!(!contains(&once));
     }
 }

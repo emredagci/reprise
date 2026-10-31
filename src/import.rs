@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::project::{ProjectToml, origin_remote};
 use crate::{Error, FolderKind, Result, Vault, scaffold};
@@ -23,36 +23,34 @@ const RECORD_ROOTS: &[(&str, &str)] = &[
 /// Top-level entries that are neither records nor tooling worth mentioning.
 const IGNORED: &[&str] = &[".git", ".DS_Store"];
 
-/// Format 1 headings → the current format, per kind of record. A heading may carry a suffix such as a date:
-/// `## Çalışıyor (2026-10-24)` becomes `## Working (2026-10-24)`.
-const ITEM_HEADINGS: &[(&str, &str)] = &[
-    ("Belirti", "Problem"),
-    ("Kök neden", "Cause"),
-    ("Çözüm", "Solution"),
-    ("Doğrulama", "Verification"),
-    ("Notlar", "Notes"),
-];
-const DECISION_HEADINGS: &[(&str, &str)] = &[
-    ("Bağlam", "Context"),
-    ("Karar", "Decision"),
-    ("Neden", "Why"),
-    ("Alternatifler", "Alternatives"),
-];
-const SESSION_HEADINGS: &[(&str, &str)] = &[
-    ("Yapılan", "Done"),
-    ("Kararlar", "Decisions"),
-    ("Açık kalan", "Open"),
-    ("Belirsiz", "Uncertain"),
-    ("Sonraki adım", "Next step"),
-    ("Dokunulan kayıtlar", "Touched records"),
-];
-const STATE_HEADINGS: &[(&str, &str)] = &[
-    ("Ne", "What"),
-    ("Mimari", "Architecture"),
-    ("Çalışmıyor / bilinen sorunlar", "Not working"),
-    ("Çalışıyor", "Working"),
-    ("Nasıl çalıştırılır / test edilir", "Run and test"),
-];
+/// What a format 1 vault's own words become, read from the file given with `--map`: the `## `
+/// headings of each kind of record, and the values of a session card's `source:` field. A heading
+/// may carry a suffix such as a date: `## Done (2026-10-24)` keeps it. Without a map, headings and
+/// fields are copied as they are.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields, rename_all = "kebab-case")]
+pub struct Mapping {
+    pub headings: Headings,
+    pub session_source: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Headings {
+    pub item: BTreeMap<String, String>,
+    pub decision: BTreeMap<String, String>,
+    pub session: BTreeMap<String, String>,
+    pub state: BTreeMap<String, String>,
+}
+
+impl Mapping {
+    pub fn read(path: &Path) -> Result<Self> {
+        toml::from_str(&read(path)?).map_err(|e| Error::ConfigInvalid {
+            path: path.to_path_buf(),
+            message: e.message().to_owned(),
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -115,7 +113,7 @@ pub struct Plan {
 }
 
 /// Works out the import of `source` into `vault` without writing anything.
-pub fn plan(source: &Path, vault: &Vault) -> Result<Plan> {
+pub fn plan(source: &Path, vault: &Vault, map: &Mapping) -> Result<Plan> {
     let source = crate::error::canonical(source)?;
     if Vault::inspect(&source)? != FolderKind::Format1 {
         return Err(Error::NotFormat1Vault(source));
@@ -179,20 +177,24 @@ pub fn plan(source: &Path, vault: &Vault) -> Result<Plan> {
             let (kind, text) = match (first, rel.extension().and_then(|e| e.to_str())) {
                 (Some("items"), Some("md")) => {
                     ids.extend(field(&raw, "id"));
-                    (Kind::Item, convert_headings(&raw, ITEM_HEADINGS))
+                    (Kind::Item, convert_headings(&raw, &map.headings.item))
                 }
-                (Some("decisions"), Some("md")) => {
-                    (Kind::Decision, convert_headings(&raw, DECISION_HEADINGS))
-                }
+                (Some("decisions"), Some("md")) => (
+                    Kind::Decision,
+                    convert_headings(&raw, &map.headings.decision),
+                ),
                 (Some("sessions"), Some("md")) => (
                     Kind::Session,
-                    convert_headings(&rename_source(&raw), SESSION_HEADINGS),
+                    convert_headings(
+                        &rename_source(&raw, &map.session_source),
+                        &map.headings.session,
+                    ),
                 ),
                 (Some("state.md"), _) => {
                     repo = field(&raw, "repo").map(PathBuf::from);
                     (
                         Kind::State,
-                        convert_headings(&drop_field(&raw, "repo"), STATE_HEADINGS),
+                        convert_headings(&drop_field(&raw, "repo"), &map.headings.state),
                     )
                 }
                 (Some("project.json"), _) => {
@@ -286,8 +288,8 @@ pub fn plan(source: &Path, vault: &Vault) -> Result<Plan> {
 
 /// Writes the plan's files and remembers the repositories found. Plans again first, so nothing that
 /// changed in the meantime is overwritten.
-pub fn apply(source: &Path, vault: &Vault) -> Result<Plan> {
-    let plan = plan(source, vault)?;
+pub fn apply(source: &Path, vault: &Vault, map: &Mapping) -> Result<Plan> {
+    let plan = plan(source, vault, map)?;
     for s in &plan.steps {
         scaffold::write(&vault.root().join(&s.to), &s.text)?;
     }
@@ -364,25 +366,29 @@ fn drop_field(text: &str, key: &str) -> String {
     format!("{}{kept}{}", &text[..range.start], &text[range.end..])
 }
 
-/// `source: devret` → `source: handoff` in a session card.
-fn rename_source(text: &str) -> String {
+/// A session card's `source:` value renamed by `map`.
+fn rename_source(text: &str, map: &BTreeMap<String, String>) -> String {
     let Some(range) = frontmatter(text) else {
         return text.to_owned();
     };
     let inner: String = text[range.clone()]
         .split_inclusive('\n')
-        .map(|line| match line.trim_end() {
-            "source: devret" => line.replacen("devret", "handoff", 1),
-            _ => line.to_owned(),
+        .map(|line| {
+            let renamed = line
+                .split_once(':')
+                .filter(|(k, _)| k.trim() == "source")
+                .and_then(|(_, v)| map.get(v.trim()))
+                .map(|to| format!("source: {to}\n"));
+            renamed.unwrap_or_else(|| line.to_owned())
         })
         .collect();
     format!("{}{inner}{}", &text[..range.start], &text[range.end..])
 }
 
 /// Renames `## ` headings outside code fences. A heading matches a name exactly or followed by a space
-/// or `(`; longer names are tried first, so `Çalışmıyor …` is not taken for `Çalışıyor`.
-fn convert_headings(text: &str, map: &[(&str, &str)]) -> String {
-    let mut map = map.to_vec();
+/// or `(`; longer names are tried first, so `Works not …` is not taken for `Works`.
+fn convert_headings(text: &str, map: &BTreeMap<String, String>) -> String {
+    let mut map: Vec<(&str, &str)> = map.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
     map.sort_by_key(|(from, _)| std::cmp::Reverse(from.len()));
     let mut fenced = false;
     let mut out = String::with_capacity(text.len());
@@ -528,7 +534,7 @@ mod tests {
         w(
             &source,
             "companion/rules.md",
-            "# Kurallar\n\n- 2026-10-24: Read first.\n",
+            "# Rules\n\n- 2026-10-24: Read first.\n",
         );
         w(&source, "knowledge/rust/toolchain.md", "rustup via brew\n");
         w(&source, ".claude/brain.json", r#"{"containers": ["work"]}"#);
@@ -540,29 +546,29 @@ mod tests {
             &source,
             "projects/api/state.md",
             &format!(
-                "---\nproject: api\nrepo: {}\nupdated: 2026-10-24\n---\n\n# api\n\n## Ne\nAn API.\n\n## Çalışıyor (2026-10-24)\n- login\n\n## Çalışmıyor / bilinen sorunlar\n\n## Nasıl çalıştırılır / test edilir\n```\n## Ne\n```\n",
+                "---\nproject: api\nrepo: {}\nupdated: 2026-10-24\n---\n\n# api\n\n## About\nAn API.\n\n## Runs (2026-10-24)\n- login\n\n## Runs not / known issues\n\n## How to run\n```\n## About\n```\n",
                 repo.display()
             ),
         );
         w(
             &source,
             "projects/api/items/api-0001-login.md",
-            "---\nid: api-0001\ntitle: Login\nstatus: inbox\n---\n\n## Belirti\nbroken\n\n## Kök neden\n\n## Çözüm\n\n## Doğrulama\n\n## Notlar\n",
+            "---\nid: api-0001\ntitle: Login\nstatus: inbox\n---\n\n## Symptom\nbroken\n\n## Root cause\n\n## Fix\n\n## Check\n\n## Remarks\n",
         );
         w(
             &source,
             "projects/api/decisions/api-D-0001-cookie.md",
-            "---\nid: api-D-0001\ntitle: Cookie\nstatus: accepted\n---\n\n## Bağlam\n\n## Karar\nCookie.\n\n## Neden\n\n## Alternatifler\n",
+            "---\nid: api-D-0001\ntitle: Cookie\nstatus: accepted\n---\n\n## Background\n\n## Choice\nCookie.\n\n## Reason\n\n## Options\n",
         );
         w(
             &source,
             "projects/api/sessions/2026-10-24-1000-aaaa.md",
-            "---\nsession: aaaa\nsource: devret\n---\n\n## Yapılan\n\n## Sonraki adım\nship\n\n## Belirsiz\n",
+            "---\nsession: aaaa\nsource: wrapup\n---\n\n## Did\n\n## Then\nship\n\n## Unsure\n",
         );
         w(
             &source,
             "projects/api/gotchas.md",
-            "# api: tuzaklar\n\n- 2026-10-24: x\n",
+            "# api: pitfalls\n\n- 2026-10-24: x\n",
         );
         w(&source, "projects/api/reference.md", "hosts\n");
         w(&source, "projects/api/.DS_Store", "");
@@ -575,6 +581,40 @@ mod tests {
         }
     }
 
+    /// The format 1 test vault's headings, as a user would write them in a `--map` file.
+    const MAP: &str = r#"
+[headings.item]
+Symptom = "Problem"
+"Root cause" = "Cause"
+Fix = "Solution"
+Check = "Verification"
+Remarks = "Notes"
+
+[headings.decision]
+Background = "Context"
+Choice = "Decision"
+Reason = "Why"
+Options = "Alternatives"
+
+[headings.session]
+Did = "Done"
+Then = "Next step"
+Unsure = "Uncertain"
+
+[headings.state]
+About = "What"
+Runs = "Working"
+"Runs not / known issues" = "Not working"
+"How to run" = "Run and test"
+
+[session-source]
+wrapup = "handoff"
+"#;
+
+    fn map() -> Mapping {
+        toml::from_str(MAP).unwrap()
+    }
+
     fn read(env: &Env, rel: &str) -> String {
         fs::read_to_string(env.vault.root().join(rel)).unwrap()
     }
@@ -583,7 +623,7 @@ mod tests {
     fn plan_writes_nothing_and_lists_everything() {
         let env = env();
         let before = files(env.vault.root());
-        let p = plan(&env.source, &env.vault).unwrap();
+        let p = plan(&env.source, &env.vault, &map()).unwrap();
         assert_eq!(files(env.vault.root()), before, "planning writes nothing");
         assert_eq!(p.projects, ["api"]);
         assert_eq!(
@@ -612,7 +652,7 @@ mod tests {
     #[test]
     fn apply_converts_records() {
         let env = env();
-        apply(&env.source, &env.vault).unwrap();
+        apply(&env.source, &env.vault, &map()).unwrap();
 
         assert_eq!(
             read(&env, "profile/user.md"),
@@ -625,7 +665,7 @@ mod tests {
         assert!(state.contains("\n## Working (2026-10-24)\n"));
         assert!(state.contains("\n## Not working\n"));
         assert!(
-            state.contains("\n## Run and test\n```\n## Ne\n```\n"),
+            state.contains("\n## Run and test\n```\n## About\n```\n"),
             "fenced code is kept"
         );
         let item = read(&env, "projects/api/items/api-0001-login.md");
@@ -667,10 +707,10 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let before = snapshot(&env.source);
-        apply(&env.source, &env.vault).unwrap();
+        apply(&env.source, &env.vault, &map()).unwrap();
         assert_eq!(snapshot(&env.source), before);
 
-        let again = plan(&env.source, &env.vault).unwrap();
+        let again = plan(&env.source, &env.vault, &map()).unwrap();
         assert!(again.steps.is_empty(), "{:?}", again.steps);
         assert!(again.conflicts.is_empty());
         assert!(again.unchanged > 0);
@@ -685,7 +725,7 @@ mod tests {
             "projects/api/items/api-0001-login.md",
             "other\n",
         );
-        let p = apply(&env.source, &env.vault).unwrap();
+        let p = apply(&env.source, &env.vault, &map()).unwrap();
         let conflicts: Vec<_> = p.conflicts.iter().map(|c| c.to.clone()).collect();
         assert_eq!(
             conflicts,
@@ -711,7 +751,7 @@ mod tests {
             chrono::NaiveDate::from_ymd_opt(2026, 10, 25).unwrap(),
         )
         .unwrap();
-        let p = plan(&env.source, &env.vault).unwrap();
+        let p = plan(&env.source, &env.vault, &map()).unwrap();
         let conflicts: Vec<_> = p.conflicts.iter().map(|c| c.to.clone()).collect();
         // The session's empty state.md and gotchas.md are in the way; project.toml agrees.
         assert_eq!(
@@ -727,21 +767,44 @@ mod tests {
     fn refuses_wrong_sources() {
         let env = env();
         assert!(matches!(
-            plan(env.vault.root(), &env.vault),
+            plan(env.vault.root(), &env.vault, &map()),
             Err(Error::NotFormat1Vault(_))
         ));
         let empty = env.base.join("empty");
         fs::create_dir_all(&empty).unwrap();
         assert!(matches!(
-            plan(&empty, &env.vault),
+            plan(&empty, &env.vault, &map()),
             Err(Error::NotFormat1Vault(_))
         ));
         let inner = env.vault.root().join("notes/inner");
         fs::create_dir_all(inner.join("projects")).unwrap();
         fs::create_dir_all(inner.join("companion")).unwrap();
         assert!(matches!(
-            plan(&inner, &env.vault),
+            plan(&inner, &env.vault, &map()),
             Err(Error::ImportOverlap(_))
+        ));
+    }
+
+    #[test]
+    fn without_a_map_records_are_copied_as_they_are() {
+        let env = env();
+        apply(&env.source, &env.vault, &Mapping::default()).unwrap();
+        let item = read(&env, "projects/api/items/api-0001-login.md");
+        assert!(item.contains("## Symptom\nbroken\n"), "{item}");
+        let card = read(&env, "projects/api/sessions/2026-10-24-1000-aaaa.md");
+        assert!(card.contains("source: wrapup\n"), "{card}");
+    }
+
+    #[test]
+    fn map_file_is_checked() {
+        let env = env();
+        let good = env.base.join("map.toml");
+        w(&env.base, "map.toml", MAP);
+        assert_eq!(Mapping::read(&good).unwrap(), map());
+        w(&env.base, "bad.toml", "[headings.items]\nA = \"B\"\n");
+        assert!(matches!(
+            Mapping::read(&env.base.join("bad.toml")),
+            Err(Error::ConfigInvalid { .. })
         ));
     }
 
@@ -753,10 +816,18 @@ mod tests {
         assert_eq!(id_prefix("notes"), None);
         assert_eq!(
             convert_headings(
-                "## Çalışmıyor / bilinen sorunlar\n## Çalışıyor\n## Nedir\n",
-                STATE_HEADINGS
+                "## Runs not / known issues\n## Runs\n## Runsome\n",
+                &map().headings.state
             ),
-            "## Not working\n## Working\n## Nedir\n"
+            "## Not working\n## Working\n## Runsome\n"
+        );
+        assert_eq!(
+            rename_source(
+                "---\nsource: wrapup\n---\nsource: wrapup\n",
+                &map().session_source
+            ),
+            "---\nsource: handoff\n---\nsource: wrapup\n",
+            "only the frontmatter"
         );
         assert_eq!(
             drop_field("no frontmatter\nrepo: x\n", "repo"),

@@ -31,9 +31,10 @@ types stay exactly as in the schema.
   only what the session stated or changed, not what was already listed with the same value.
 - `events`: things that happened once or are planned: a release, a deploy, an incident, a migration, a
   meeting. `kind` is one lowercase word; `status` is done, planned or cancelled.
-- For `from` and `when`, copy the date as the session said it ("yesterday", "geçen salı", "3 days ago",
-  "2026-10-20", "in March"), or leave it empty when it is the day it was said. Never work a date out
-  yourself: reprise resolves the words against the time of the message they were in.
+- For `from` and `when`, copy the date as the session said it ("yesterday", "last tuesday", "3 days ago",
+  "2026-10-20", "in March"), in English words when the session said it in another language, or leave it
+  empty when it is the day it was said. Never work a date out yourself: reprise resolves the words against
+  the time of the message they were in.
 - `state`: only when the input says `state.md` is still the template. Fill what the project is, its
   architecture, what works, what does not, and how to run and test it, from what the session showed.
   Otherwise `null`.

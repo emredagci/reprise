@@ -260,7 +260,7 @@ mod tests {
     fn prefixes() {
         assert_eq!(default_prefix("reprise"), "reprise");
         assert_eq!(default_prefix("Web App"), "web-app");
-        assert_eq!(default_prefix("Çalışma_2"), "calisma-2");
+        assert_eq!(default_prefix("Café_2"), "cafe-2");
         assert_eq!(default_prefix("—"), "p");
     }
 

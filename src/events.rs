@@ -376,10 +376,10 @@ mod tests {
 
     #[test]
     fn an_event_told_twice_is_one() {
-        let one = ev("2026-10-27", "0.1.0 yayımlandı", "release", "done");
+        let one = ev("2026-10-27", "Published 0.1.0", "release", "done");
         let again = ev(
             "2026-10-27",
-            "reprise 0.1.0 yayımlandı ve Homebrew tap'i güncellendi",
+            "reprise 0.1.0 published and the Homebrew tap updated",
             "release",
             "done",
         );
@@ -395,11 +395,11 @@ mod tests {
         ));
         assert!(!same_event(
             &one,
-            &ev("2026-10-27", "0.1.0 yayımlandı", "deploy", "done")
+            &ev("2026-10-27", "Published 0.1.0", "deploy", "done")
         ));
         assert!(!same_event(
             &one,
-            &ev("2026-11-03", "0.1.0 yayımlandı", "release", "done")
+            &ev("2026-11-03", "Published 0.1.0", "release", "done")
         ));
         assert!(!same_event(
             &ev("2026-10-27", "Staging deploy", "deploy", "done"),
