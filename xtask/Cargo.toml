@@ -4,14 +4,13 @@ description = "Development tasks: resetting a machine to before reprise was firs
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish.workspace = true
+publish = false
 license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
 dirs.workspace = true
-reprise-clients.workspace = true
-reprise-core.workspace = true
+reprise.workspace = true
 
 [lints]
 workspace = true
