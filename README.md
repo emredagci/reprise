@@ -43,6 +43,13 @@ Or with Cargo, from [crates.io](https://crates.io/crates/reprise) (builds from s
 cargo install --locked reprise
 ```
 
+With [cargo-binstall](https://github.com/cargo-bins/cargo-binstall), the release archive is installed
+instead, with no build:
+
+```bash
+cargo binstall reprise
+```
+
 Archives for macOS and Linux are on the [releases page](https://github.com/emredagci/reprise/releases/latest).
 
 ## Get started

@@ -342,7 +342,8 @@ can push to `emredagci/homebrew-tap`), the formula is committed to the tap as `F
 [crates.io](https://crates.io/crates/reprise) through Trusted Publishing: crates.io trusts
 `emredagci/reprise`, `release.yml` and the `release` environment (the crate's Settings › Trusted Publishing), and
 the job trades its GitHub token for a short-lived crates.io token, so none is stored. A version already on
-crates.io is skipped. Set the version in `Cargo.toml` first; the tag's message becomes the release notes.
+crates.io is skipped. `[package.metadata.binstall]` in `Cargo.toml` points `cargo binstall reprise` at the
+release's archives, one per target. Set the version in `Cargo.toml` first; the tag's message becomes the release notes.
 
 The jobs that sign and publish run in the `release` environment. Keep the signing, notarization and tap
 secrets there rather than at repository level, and give the environment required reviewers and a
