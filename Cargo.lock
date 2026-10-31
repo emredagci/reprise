@@ -472,32 +472,6 @@ dependencies = [
  "chrono",
  "clap",
  "dirs",
- "reprise-clients",
- "reprise-core",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "reprise-clients"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "dirs",
- "reprise-core",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "reprise-core"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "dirs",
  "libc",
  "rusqlite",
  "serde",
@@ -875,8 +849,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "dirs",
- "reprise-clients",
- "reprise-core",
+ "reprise",
 ]
 
 [[package]]

@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use reprise_core::settings::Settings;
-use reprise_core::sweep::Schedule;
-use reprise_core::vault::Vault;
+use reprise::settings::Settings;
+use reprise::sweep::Schedule;
+use reprise::vault::Vault;
 
 pub const USAGE: &str =
     "  reset   removes reprise's settings and caches, undoes connections and the scheduled sweep, to try
@@ -41,7 +41,7 @@ pub fn run(root: &Path, args: &[String]) -> Result<()> {
     }
     let settings_path = Settings::default_path()?;
     let settings = Settings::load_from(&settings_path).unwrap_or_default();
-    let connected: Vec<_> = reprise_clients::all()
+    let connected: Vec<_> = reprise::clients::all()
         .into_iter()
         .filter(|c| {
             c.connector()

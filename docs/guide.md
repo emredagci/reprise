@@ -278,21 +278,24 @@ unschedule` makes it run only when you run `reprise sweep`.
 
 ## Code layout
 
+One crate, `reprise`: a library and the binary built on it.
+
 ```
-crates/
-  reprise-core/      the vault and everything done to it: setup and git history, projects, access,
+src/                the vault and everything done to it: setup and git history, projects, access,
                     records, search, staleness, doctor, distilling and the sweep's bookkeeping. Knows no
-                    agent. templates/ holds the vault, project, record and distilling templates.
-  reprise-clients/   agent adapters, one module per client (claude/, codex/): detection, connecting,
-                    hooks, transcripts and running its CLI
-apps/
-  reprise/           the CLI (see Commands); schedule.rs installs the sweep's launchd or systemd job
+                    agent.
+  clients/          agent adapters, one module per client (claude/, codex/, openrouter.rs): detection,
+                    connecting, hooks, transcripts and running its CLI
+  cli/              the binary (see Commands); schedule.rs installs the sweep's launchd or systemd job
+templates/          the vault, project, record and distilling templates, built into the binary
+tests/              end-to-end tests that run the binary
 packaging/
   homebrew/         the Homebrew formula's template, filled in by the release workflow
 xtask/              development tasks (cargo xtask)
 ```
 
-Dependencies point one way: `core ← clients`, `apps/*` on top.
+Dependencies point one way: the vault code ← `clients` ← `cli`. The library is the binary's internals, not a
+stable API.
 
 Long-running work, such as the transcript sweep, lives behind the CLI as `reprise` commands; the OS's own
 scheduler runs them in the background.

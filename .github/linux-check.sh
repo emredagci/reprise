@@ -43,8 +43,8 @@ docker exec "$container" bash -euo pipefail -c '
   loginctl enable-linger dev
   systemctl start "user@$(id -u dev).service"'
 docker cp "$here/scenario.sh" "$container":/usr/local/bin/scenario
-answer="$(sed -n 's/^const ANSWER: &str = r#"\(.*\)"#;$/\1/p' apps/reprise/tests/sweep.rs)"
-[[ -n "$answer" ]] || { echo "no stand-in answer in apps/reprise/tests/sweep.rs" >&2; exit 1; }
+answer="$(sed -n 's/^const ANSWER: &str = r#"\(.*\)"#;$/\1/p' tests/sweep.rs)"
+[[ -n "$answer" ]] || { echo "no stand-in answer in tests/sweep.rs" >&2; exit 1; }
 uid="$(docker exec "$container" id -u dev)"
 docker exec -u dev -e HOME=/home/dev -e XDG_RUNTIME_DIR="/run/user/$uid" \
   -e DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" -w /home/dev "$container" \
