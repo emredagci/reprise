@@ -33,10 +33,10 @@ Works with Claude Code on macOS and Linux. Single binary, no server, no account.
 brew install emredagci/tap/reprise
 ```
 
-Or from source:
+Or with Cargo, from [crates.io](https://crates.io/crates/reprise):
 
 ```bash
-cargo install --locked --git https://github.com/emredagci/reprise reprise
+cargo install --locked reprise
 ```
 
 Archives for macOS and Linux are on the [releases page](https://github.com/emredagci/reprise/releases/latest).

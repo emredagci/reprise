@@ -338,8 +338,11 @@ and Intel) and Linux (x86_64 and arm64, on Ubuntu 22.04 so older glibc works) wi
 Developer ID (hardened runtime) and notarized by Apple; a lone binary cannot be stapled, so Gatekeeper
 checks the ticket online. The release gets the archives, `SHA256SUMS` and `reprise.rb`, the Homebrew formula
 for them, rendered from `packaging/homebrew/reprise.rb.in`. With the `HOMEBREW_TAP_TOKEN` secret (a token that
-can push to `emredagci/homebrew-tap`), the formula is committed to the tap as `Formula/reprise.rb`. Set the version in
-`Cargo.toml` first; the tag's message becomes the release notes.
+can push to `emredagci/homebrew-tap`), the formula is committed to the tap as `Formula/reprise.rb`. Last, the crate is published to
+[crates.io](https://crates.io/crates/reprise) through Trusted Publishing: crates.io trusts
+`emredagci/reprise`, `release.yml` and the `release` environment (the crate's Settings › Trusted Publishing), and
+the job trades its GitHub token for a short-lived crates.io token, so none is stored. A version already on
+crates.io is skipped. Set the version in `Cargo.toml` first; the tag's message becomes the release notes.
 
 The jobs that sign and publish run in the `release` environment. Keep the signing, notarization and tap
 secrets there rather than at repository level, and give the environment required reviewers and a

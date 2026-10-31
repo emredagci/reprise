@@ -5,7 +5,9 @@
 # The tag is the version in Cargo.toml, without a prefix; its message becomes the release notes. The release carries
 # one archive per platform (reprise-<version>-<platform>.tar.gz, such as macos-arm64), SHA256SUMS and reprise.rb, the Homebrew formula for
 # those archives. The Mac binaries are signed with the Developer ID and notarized by Apple. With the
-# HOMEBREW_TAP_TOKEN secret set, the formula is also committed to emredagci/homebrew-tap.
+# HOMEBREW_TAP_TOKEN secret set, the formula is also committed to emredagci/homebrew-tap. The crate is then
+# published to crates.io through Trusted Publishing, which crates.io must trust for this workflow and the
+# release environment.
 #
 # Run by hand without a tag, it builds, signs and notarizes the checked-out branch and keeps the archives
 # as the run's artifacts, publishing nothing: a rehearsal of a release.
@@ -211,3 +213,38 @@ jobs:
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -qm "reprise $VERSION"
           git push origin HEAD
+
+  crates:
+    needs: [meta, publish]
+    if: needs.meta.outputs.publish == 'true'
+    environment: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # crates.io trusts this workflow (Trusted Publishing): the job trades its OIDC token for a short-lived
+      # publish token, so no crates.io token is stored anywhere.
+      id-token: write
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.meta.outputs.ref }}
+
+      - name: Already on crates.io?
+        id: known
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' -A 'reprise release (github.com/emredagci/reprise)' \
+            "https://crates.io/api/v1/crates/reprise/$VERSION")"
+          if [ "$code" = 200 ]; then echo "reprise $VERSION is already on crates.io."; echo "skip=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
+        if: steps.known.outputs.skip != 'true'
+        id: auth
+
+      - name: Publish to crates.io
+        if: steps.known.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked
