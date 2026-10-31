@@ -21,7 +21,7 @@ pub use error::{Error, Result};
 use path::{find_program, full_path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "lowercase")]
 pub enum ClientId {
     Claude,
     Codex,
@@ -258,6 +258,13 @@ fn version_of(bin: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_names_match_the_command_line() {
+        for id in [ClientId::Claude, ClientId::Codex, ClientId::OpenRouter] {
+            assert_eq!(serde_json::to_value(id).unwrap(), id.as_str());
+        }
+    }
 
     #[test]
     fn choices_from_help_text() {
