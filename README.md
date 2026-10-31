@@ -1,5 +1,9 @@
 # reprise
 
+[![crates.io](https://img.shields.io/crates/v/reprise.svg)](https://crates.io/crates/reprise)
+[![CI](https://github.com/emredagci/reprise/actions/workflows/ci.yml/badge.svg)](https://github.com/emredagci/reprise/actions/workflows/ci.yml)
+[![License](https://img.shields.io/crates/l/reprise.svg)](LICENSE)
+
 A second brain for your coding agent.
 
 Every session starts knowing the project's state, open work, past decisions and your rules. Every session ends
@@ -33,7 +37,7 @@ Works with Claude Code on macOS and Linux. Single binary, no server, no account.
 brew install emredagci/tap/reprise
 ```
 
-Or with Cargo, from [crates.io](https://crates.io/crates/reprise):
+Or with Cargo, from [crates.io](https://crates.io/crates/reprise) (builds from source; needs Rust 1.90 or later):
 
 ```bash
 cargo install --locked reprise
