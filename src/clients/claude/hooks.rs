@@ -341,8 +341,8 @@ mod tests {
     #[test]
     fn output_is_one_line_with_raw_unicode() {
         assert_eq!(
-            output_line(Event::Prompt, "a \"b\"\nç"),
-            "{\"hookSpecificOutput\": {\"hookEventName\": \"UserPromptSubmit\", \"additionalContext\": \"a \\\"b\\\"\\nç\"}}"
+            output_line(Event::Prompt, "a \"b\"\né"),
+            "{\"hookSpecificOutput\": {\"hookEventName\": \"UserPromptSubmit\", \"additionalContext\": \"a \\\"b\\\"\\né\"}}"
         );
     }
 }

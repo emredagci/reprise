@@ -10,8 +10,7 @@ pub const MIN_QUOTE: usize = 12;
 const MIN_PART: usize = 4;
 
 /// Text prepared for matching: lowercase, typographic quotes and dashes made plain, every run of
-/// whitespace a single space. The digest's indenting of quoted lines disappears with it. Turkish
-/// `I`, `İ`, `ı` and `i` all become `i`, so a quote matches whichever way its capitals were folded.
+/// whitespace a single space. The digest's indenting of quoted lines disappears with it.
 pub fn normalize(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut space = false;
@@ -21,8 +20,6 @@ pub fn normalize(text: &str) -> String {
             '\u{201c}' | '\u{201d}' | '\u{201e}' | '\u{00ab}' | '\u{00bb}' => '"',
             '\u{2010}'..='\u{2015}' | '\u{2212}' => '-',
             '\u{00a0}' => ' ',
-            '\u{0131}' => 'i',
-            '\u{0307}' => continue,
             c => c,
         };
         if c.is_whitespace() {
@@ -94,26 +91,23 @@ mod tests {
     #[test]
     fn quotes_match_across_case_spacing_and_marks() {
         let digest = normalize(
-            "## User [2026-10-30 10:00]\nBundan sonra   migration YAZMA.\n    Assistant: “Tamam”, migration’ı kaldırdım.",
+            "## User [2026-10-30 10:00]\nFrom now on   NO migrations.\n    Assistant: “Done”, I’ve removed the migration.",
         );
-        assert!(found_in("bundan sonra migration yazma", &digest));
-        assert!(found_in("\"Tamam\", migration'ı kaldırdım", &digest));
-        assert!(found_in("Bundan sonra … kaldırdım", &digest));
-        assert!(found_in("Bundan sonra ... migration yazma", &digest));
+        assert!(found_in("from now on no migrations", &digest));
+        assert!(found_in("\"Done\", I've removed the migration", &digest));
+        assert!(found_in("From now on … removed the migration", &digest));
+        assert!(found_in("From now on ... no migrations", &digest));
     }
 
     #[test]
     fn made_up_or_too_short_quotes_do_not_count() {
-        let digest = normalize("## User [2026-10-30 10:00]\nevet, yap bunu lütfen");
-        assert!(!found_in("migration yazılmayacak", &digest));
-        assert!(!found_in("evet", &digest), "too short to tie anything");
-        assert!(
-            !found_in("lütfen … evet, yap", &digest),
-            "parts out of order"
-        );
-        assert!(!found_in("evet, yap … ab", &digest), "a part too short");
+        let digest = normalize("## User [2026-10-30 10:00]\nyes, do it please");
+        assert!(!found_in("no migration will be written", &digest));
+        assert!(!found_in("yes", &digest), "too short to tie anything");
+        assert!(!found_in("please … yes, do", &digest), "parts out of order");
+        assert!(!found_in("yes, do … ab", &digest), "a part too short");
         assert!(!found_in("", &digest));
-        assert!(found_in("evet, yap bunu", &digest));
+        assert!(found_in("yes, do it please", &digest));
     }
 
     #[test]
@@ -131,10 +125,13 @@ mod tests {
     }
 
     #[test]
-    fn turkish_capitals_match() {
-        let source = normalize("İLK sürüm ÇIKTI");
-        assert!(found_in("ilk sürüm çıktı", &source));
-        assert!(found_in("İlk Sürüm Çıktı", &source));
-        assert!(found_in("İLK sürüm ÇIKTI", &source));
+    fn capitals_and_accents_match() {
+        let source = normalize("CAFÉ menu SHIPPED");
+        assert!(found_in("café menu shipped", &source));
+        assert!(found_in("Café Menu Shipped", &source));
+        assert!(
+            !found_in("cafe menu shipped", &source),
+            "accents are part of the words"
+        );
     }
 }

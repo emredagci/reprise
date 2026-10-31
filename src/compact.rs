@@ -24,63 +24,51 @@ pub const KEPT_BUDGET: usize = 3500;
 pub const INSTRUCTIONS_BUDGET: usize = 1500;
 /// Characters kept of one message.
 const MESSAGE_LIMIT: usize = 600;
-/// A message shorter than this ("ok", "evet", "devam") says nothing on its own.
+/// A message shorter than this ("ok", "yes", "go on") says nothing on its own.
 const MIN_CHARS: usize = 12;
 /// Days a session's kept messages stay in the cache.
 const KEEP_DAYS: u64 = 14;
 
-/// Words that mark an instruction, a prohibition or a correction, English and Turkish, folded to
-/// ASCII like `text::tokens`. Sorted.
+/// Words that mark an instruction, a prohibition or a correction, lowercase ASCII like `text::tokens`
+/// (`don't` is `don` and `t`). Sorted.
 const CUES: &[&str] = &[
     "always",
-    "artik",
-    "asla",
     "avoid",
-    "dikkat",
+    "careful",
     "don",
     "dont",
-    "etme",
-    "hayir",
+    "forbidden",
     "instead",
-    "kesinlikle",
-    "kural",
     "must",
-    "mutlaka",
     "never",
-    "olmasin",
     "only",
     "prefer",
+    "remember",
     "rule",
-    "sadece",
-    "sakin",
     "should",
     "stop",
-    "unutma",
     "wrong",
-    "yalniz",
-    "yanlis",
-    "yerine",
 ];
-/// Phrases that mark an instruction, as runs of folded tokens.
+/// Phrases that mark an instruction, as runs of tokens.
 const CUE_PHRASES: &[&str] = &[
     "from now on",
     "going forward",
-    "bundan sonra",
-    "her zaman",
-    "bir daha",
+    "do not",
+    "make sure",
+    "next time",
+    "not like that",
 ];
 
-/// Whether a message reads like an instruction or a correction. A Turkish negative imperative
-/// (`yazma`, `ekleme`, `silme`) counts too; a noun that ends the same way only moves a message up.
+/// Whether a message reads like an instruction or a correction.
 pub fn is_directive(text: &str) -> bool {
     let words = tokens(text);
     let joined = format!(" {} ", words.join(" "));
-    words.iter().any(|w| {
-        CUES.binary_search(&w.as_str()).is_ok()
-            || (w.len() >= 5 && (w.ends_with("ma") || w.ends_with("me")))
-    }) || CUE_PHRASES
+    words
         .iter()
-        .any(|p| joined.contains(&format!(" {p} ")))
+        .any(|w| CUES.binary_search(&w.as_str()).is_ok())
+        || CUE_PHRASES
+            .iter()
+            .any(|p| joined.contains(&format!(" {p} ")))
 }
 
 fn file(vault: &Vault, session: &str) -> PathBuf {
@@ -242,19 +230,22 @@ mod tests {
     }
 
     #[test]
-    fn directives_in_both_languages() {
+    fn directives_and_plain_messages() {
         for text in [
             "From now on, use pnpm.",
             "Never touch the migrations folder",
-            "bundan sonra commit mesajları İngilizce olsun",
-            "migration yazma, gerek yok",
-            "README'ye uzun anlatım ekleme",
-            "Hayır, öyle değil",
-            "push etme",
+            "Don't push without asking",
+            "do not write a migration for this",
+            "No, that's wrong",
+            "Next time, run the tests first",
         ] {
             assert!(is_directive(text), "{text}");
         }
-        for text in ["what does this function return?", "tests pass now, nice"] {
+        for text in [
+            "what does this function return?",
+            "tests pass now, nice",
+            "the theme looks awesome, become a schema",
+        ] {
             assert!(!is_directive(text), "{text}");
         }
     }
@@ -266,7 +257,7 @@ mod tests {
         let long = "x".repeat(MESSAGE_LIMIT);
         let key = format!("ghp_{}", "q1W2".repeat(9));
         let mut messages: Vec<(String, String)> = vec![
-            ("10:00".into(), "bundan sonra migration yazma".into()),
+            ("10:00".into(), "from now on, no migrations".into()),
             ("10:01".into(), "ok".into()),
             ("10:02".into(), "<command-name>/model</command-name>".into()),
             ("10:03".into(), format!("deploy with token {key}")),
@@ -286,7 +277,7 @@ mod tests {
             block.len()
         );
         assert!(
-            block.contains("- [10:00] bundan sonra migration yazma"),
+            block.contains("- [10:00] from now on, no migrations"),
             "{block}"
         );
         assert!(
@@ -308,7 +299,7 @@ mod tests {
         assert!(kept >= 2);
 
         let every = instructions_block(&vault, "s-1").unwrap();
-        assert!(every.contains("bundan sonra migration yazma"), "{every}");
+        assert!(every.contains("from now on, no migrations"), "{every}");
         assert!(
             !every.contains("[11:09]"),
             "only instructions ride along: {every}"

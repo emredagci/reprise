@@ -1,5 +1,5 @@
-//! Dates said in words, resolved by code: "yesterday", "dün", "3 days ago", "geçen salı", "last
-//! month", "in March", "2026-10". The model never does date arithmetic; it copies what was said and
+//! Dates said in words, resolved by code: "yesterday", "3 days ago", "last tuesday", "last month",
+//! "in March", "2026-10". The model never does date arithmetic; it copies what was said and
 //! this turns it into a day or a span of days against the time it was said. A date known only to the
 //! month or year stays a span, never a made-up day.
 
@@ -102,44 +102,44 @@ fn iso(text: &str) -> Option<When> {
     }
 }
 
-/// Month names, English and Turkish, folded to ASCII.
-const MONTHS: [(&str, &str, &str); 12] = [
-    ("january", "jan", "ocak"),
-    ("february", "feb", "subat"),
-    ("march", "mar", "mart"),
-    ("april", "apr", "nisan"),
-    ("may", "may", "mayis"),
-    ("june", "jun", "haziran"),
-    ("july", "jul", "temmuz"),
-    ("august", "aug", "agustos"),
-    ("september", "sep", "eylul"),
-    ("october", "oct", "ekim"),
-    ("november", "nov", "kasim"),
-    ("december", "dec", "aralik"),
+/// Month names and their short forms.
+const MONTHS: [(&str, &str); 12] = [
+    ("january", "jan"),
+    ("february", "feb"),
+    ("march", "mar"),
+    ("april", "apr"),
+    ("may", "may"),
+    ("june", "jun"),
+    ("july", "jul"),
+    ("august", "aug"),
+    ("september", "sep"),
+    ("october", "oct"),
+    ("november", "nov"),
+    ("december", "dec"),
 ];
 
-const WEEKDAYS: [(&str, &str, Weekday); 7] = [
-    ("monday", "pazartesi", Weekday::Mon),
-    ("tuesday", "sali", Weekday::Tue),
-    ("wednesday", "carsamba", Weekday::Wed),
-    ("thursday", "persembe", Weekday::Thu),
-    ("friday", "cuma", Weekday::Fri),
-    ("saturday", "cumartesi", Weekday::Sat),
-    ("sunday", "pazar", Weekday::Sun),
+const WEEKDAYS: [(&str, Weekday); 7] = [
+    ("monday", Weekday::Mon),
+    ("tuesday", Weekday::Tue),
+    ("wednesday", Weekday::Wed),
+    ("thursday", Weekday::Thu),
+    ("friday", Weekday::Fri),
+    ("saturday", Weekday::Sat),
+    ("sunday", Weekday::Sun),
 ];
 
 fn month_of(word: &str) -> Option<u32> {
     MONTHS
         .iter()
-        .position(|(en, short, tr)| word == *en || word == *short || word == *tr)
+        .position(|(name, short)| word == *name || word == *short)
         .map(|i| i as u32 + 1)
 }
 
 fn weekday_of(word: &str) -> Option<Weekday> {
     WEEKDAYS
         .iter()
-        .find(|(en, tr, _)| word == *en || word == *tr)
-        .map(|(_, _, d)| *d)
+        .find(|(name, _)| word == *name)
+        .map(|(_, d)| *d)
 }
 
 /// Units of "N <unit> ago", in days for days and weeks; months and years are calendar steps.
@@ -152,10 +152,10 @@ enum Unit {
 
 fn unit_of(word: &str) -> Option<Unit> {
     Some(match word {
-        "day" | "days" | "gun" => Unit::Day,
-        "week" | "weeks" | "hafta" => Unit::Week,
-        "month" | "months" | "ay" => Unit::Month,
-        "year" | "years" | "yil" | "sene" => Unit::Year,
+        "day" | "days" => Unit::Day,
+        "week" | "weeks" => Unit::Week,
+        "month" | "months" => Unit::Month,
+        "year" | "years" => Unit::Year,
         _ => return None,
     })
 }
@@ -165,16 +165,16 @@ fn number_of(word: &str) -> Option<i64> {
         return (0..=1000).contains(&n).then_some(n);
     }
     Some(match word {
-        "a" | "an" | "one" | "bir" => 1,
-        "two" | "iki" => 2,
-        "three" | "uc" => 3,
-        "four" | "dort" => 4,
-        "five" | "bes" => 5,
-        "six" | "alti" => 6,
-        "seven" | "yedi" => 7,
-        "eight" | "sekiz" => 8,
-        "nine" | "dokuz" => 9,
-        "ten" | "on" => 10,
+        "a" | "an" | "one" => 1,
+        "two" => 2,
+        "three" => 3,
+        "four" => 4,
+        "five" => 5,
+        "six" => 6,
+        "seven" => 7,
+        "eight" => 8,
+        "nine" => 9,
+        "ten" => 10,
         _ => return None,
     })
 }
@@ -205,35 +205,34 @@ pub fn resolve(text: &str, anchor: NaiveDate) -> Option<When> {
     let words: Vec<&str> = w.iter().map(String::as_str).collect();
     let has = |x: &str| words.contains(&x);
     let pair = |a: &str, b: &str| words.windows(2).any(|p| p[0] == a && p[1] == b);
-    let last = has("last") || has("gecen") || has("previous") || has("onceki");
-    let this = has("this") || has("bu");
-    let next = has("next") || has("gelecek") || has("onumuzdeki");
+    let last = has("last") || has("previous");
+    let this = has("this");
+    let next = has("next") || has("coming");
 
     // Single words and fixed phrases.
-    if pair("day", "before") || pair("evvelsi", "gun") || pair("evvelki", "gun") || has("evvelsi") {
+    if pair("day", "before") {
         return Some(When::day(anchor - Duration::days(2)));
     }
-    if pair("day", "after") || has("obur") || has("ertesi") {
+    if pair("day", "after") {
         return Some(When::day(anchor + Duration::days(2)));
     }
     if has("today")
-        || has("bugun")
         || pair("this", "morning")
-        || pair("bu", "sabah")
+        || pair("this", "afternoon")
+        || pair("this", "evening")
         || has("tonight")
-        || pair("bu", "aksam")
     {
         return Some(When::day(anchor));
     }
-    if has("yesterday") || has("dun") {
+    if has("yesterday") {
         return Some(When::day(anchor - Duration::days(1)));
     }
-    if has("tomorrow") || has("yarin") {
+    if has("tomorrow") {
         return Some(When::day(anchor + Duration::days(1)));
     }
 
-    // "3 days ago", "iki hafta önce", "a month ago".
-    if has("ago") || has("once") {
+    // "3 days ago", "two weeks ago", "a month ago".
+    if has("ago") {
         for k in 0..words.len().saturating_sub(1) {
             let (Some(n), Some(unit)) = (number_of(words[k]), unit_of(words[k + 1])) else {
                 continue;
@@ -247,7 +246,7 @@ pub fn resolve(text: &str, anchor: NaiveDate) -> Option<When> {
         }
     }
 
-    // "last week", "geçen ay", "this year", "next month".
+    // "last week", "last month", "this year", "next month".
     for unit in words.iter().filter_map(|w| unit_of(w)) {
         let step: i64 = if last {
             -1
@@ -277,7 +276,7 @@ pub fn resolve(text: &str, anchor: NaiveDate) -> Option<When> {
         }
     }
 
-    // A month, with a day and a year when they are given: "3 mart", "March 3, 2026", "in March".
+    // A month, with a day and a year when they are given: "3 March", "March 3, 2026", "in March".
     if let Some(k) = words.iter().position(|w| month_of(w).is_some()) {
         let month = month_of(words[k]).expect("found");
         let year = words
@@ -324,21 +323,22 @@ mod tests {
     #[test]
     fn fixed_words() {
         assert_eq!(r("today"), "2026-10-30");
-        assert_eq!(r("bugün"), "2026-10-30");
+        assert_eq!(r("this morning"), "2026-10-30");
         assert_eq!(r("yesterday"), "2026-10-29");
-        assert_eq!(r("dün akşam"), "2026-10-29");
-        assert_eq!(r("evvelsi gün"), "2026-10-28");
+        assert_eq!(r("yesterday evening"), "2026-10-29");
         assert_eq!(r("the day before yesterday"), "2026-10-28");
-        assert_eq!(r("yarın"), "2026-10-31");
+        assert_eq!(r("tomorrow"), "2026-10-31");
+        assert_eq!(r("the day after tomorrow"), "2026-11-01");
     }
 
     #[test]
     fn counted_back() {
         assert_eq!(r("3 days ago"), "2026-10-27");
-        assert_eq!(r("üç gün önce"), "2026-10-27");
+        assert_eq!(r("three days ago"), "2026-10-27");
         assert_eq!(r("a month ago"), "2026-09");
-        assert_eq!(r("2 ay önce"), "2026-08");
-        assert_eq!(r("bir yıl önce"), "2025");
+        assert_eq!(r("2 months ago"), "2026-08");
+        assert_eq!(r("a year ago"), "2025");
+        assert_eq!(r("once a week"), "-", "not a date");
         assert_eq!(r("2 weeks ago"), "2026-10-12..2026-10-18");
         assert_eq!(r("11 months ago"), "2025-11");
     }
@@ -346,24 +346,23 @@ mod tests {
     #[test]
     fn named_periods() {
         assert_eq!(r("last week"), "2026-10-19..2026-10-25");
-        assert_eq!(r("geçen hafta"), "2026-10-19..2026-10-25");
-        assert_eq!(r("bu hafta"), "2026-10-26..2026-11-01");
-        assert_eq!(r("geçen ay"), "2026-09");
+        assert_eq!(r("this week"), "2026-10-26..2026-11-01");
+        assert_eq!(r("last month"), "2026-09");
         assert_eq!(r("last year"), "2025");
-        assert_eq!(r("bu yıl"), "2026");
+        assert_eq!(r("this year"), "2026");
         assert_eq!(r("next month"), "2026-11");
     }
 
     #[test]
     fn weekdays_and_months() {
-        assert_eq!(r("geçen salı"), "2026-10-27");
+        assert_eq!(r("last tuesday"), "2026-10-27");
         assert_eq!(r("on Friday"), "2026-10-23", "not the day it was said");
         assert_eq!(r("next monday"), "2026-11-02");
-        assert_eq!(r("mart'ta"), "2026-03");
+        assert_eq!(r("in March"), "2026-03");
         assert_eq!(r("in December"), "2025-12", "a later month is last year's");
-        assert_eq!(r("3 mart"), "2026-03-03");
+        assert_eq!(r("3 March"), "2026-03-03");
         assert_eq!(r("March 3, 2024"), "2024-03-03");
-        assert_eq!(r("ekim 2025"), "2025-10");
+        assert_eq!(r("Oct 2025"), "2025-10");
     }
 
     #[test]

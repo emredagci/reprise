@@ -239,8 +239,8 @@ fn mentions(text: &str, id: &str) -> bool {
     })
 }
 
-/// A rough stem match for Turkish suffixes. Terms of 4+ characters match any
-/// token starting with their first 5 characters; shorter ones must match exactly.
+/// A rough stem match, so word endings do not matter (`payment`, `payments`). Terms of 4+ characters
+/// match any token starting with their first 5 characters; shorter ones must match exactly.
 pub fn term_hits(term: &str, tokens: &BTreeSet<String>) -> bool {
     if term.chars().count() < 4 {
         return tokens.contains(term);
@@ -365,22 +365,22 @@ mod tests {
         w(
             root,
             "projects/p/items/p-0001.md",
-            "---\nid: p-0001\ntitle: Ödeme ekranı çöküyor\nstatus: inbox\naliases: [payment crash]\nfiles: [src/pay.rs]\n---\nStripe callback.\n",
+            "---\nid: p-0001\ntitle: Payment screen crashes\nstatus: inbox\naliases: [checkout crash]\nfiles: [src/pay.rs]\n---\nStripe callback.\n",
         );
         w(
             root,
             "projects/p/decisions/p-D-0001.md",
-            "---\nid: p-D-0001\ntitle: Ödemeler Stripe ile\nstatus: accepted\n---\n",
+            "---\nid: p-D-0001\ntitle: Payments through Stripe\nstatus: accepted\n---\n",
         );
         w(root, "projects/p/state.md", "# p\n");
         w(root, "notes/misc.md", "nothing\n");
         let q = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
 
-        let r = search(&vault, &q(&["p"]), &q(&["odeme", "stripe", "zzzz"]), 50).unwrap();
+        let r = search(&vault, &q(&["p"]), &q(&["payment", "stripe", "zzzz"]), 50).unwrap();
         // The decision matches both terms in its title.
         let got: Vec<_> = r.hits.iter().map(|h| (h.id.as_str(), h.score)).collect();
         assert_eq!(got, [("p-D-0001", 6), ("p-0001", 4)]);
-        assert_eq!(r.hits[1].matched, ["odeme", "stripe"]);
+        assert_eq!(r.hits[1].matched, ["payment", "stripe"]);
         assert_eq!(r.terms_without_any_match, ["zzzz"]);
         assert_eq!(r.scanned.get("note"), Some(&1));
         assert_eq!(r.scanned.get("profile"), Some(&2));
@@ -399,7 +399,10 @@ mod tests {
         let tokens: BTreeSet<String> = ["api", "apikey"].iter().map(|s| s.to_string()).collect();
         assert!(term_hits("api", &tokens));
         assert!(!term_hits("ap", &tokens));
-        assert!(!term_hits("apiler", &tokens));
+        assert!(
+            !term_hits("apis", &tokens),
+            "4 characters match on the stem, and none starts with apis"
+        );
         assert!(term_hits("apike", &tokens));
     }
 }

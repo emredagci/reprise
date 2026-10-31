@@ -35,11 +35,14 @@ pub fn strip_comments(text: &str) -> String {
     out
 }
 
-/// Turkish letters folded to ASCII, lowercased, runs of `[a-z0-9]`.
+/// Letters transliterated to ASCII (`café` → `cafe`), lowercased, runs of `[a-z0-9]`.
 pub fn tokens(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
-    for c in text.chars().map(fold_turkish).flat_map(char::to_lowercase) {
+    for c in deunicode::deunicode(text)
+        .chars()
+        .flat_map(char::to_lowercase)
+    {
         if c.is_ascii_lowercase() || c.is_ascii_digit() {
             current.push(c);
         } else if !current.is_empty() {
@@ -50,24 +53,6 @@ pub fn tokens(text: &str) -> Vec<String> {
         out.push(current);
     }
     out
-}
-
-fn fold_turkish(c: char) -> char {
-    match c {
-        'ç' => 'c',
-        'ğ' => 'g',
-        'ı' => 'i',
-        'ö' => 'o',
-        'ş' => 's',
-        'ü' => 'u',
-        'Ç' => 'C',
-        'Ğ' => 'G',
-        'İ' => 'I',
-        'Ö' => 'O',
-        'Ş' => 'S',
-        'Ü' => 'U',
-        c => c,
-    }
 }
 
 /// The body of `## heading` up to the next `## ` line, trimmed.
@@ -108,8 +93,8 @@ mod tests {
 
     #[test]
     fn clip_counts_characters() {
-        assert_eq!(clip("  şşş  ", 3), "şşş");
-        assert_eq!(clip("çğıöşü", 2), "çğ …[+4]");
+        assert_eq!(clip("  ééé  ", 3), "ééé");
+        assert_eq!(clip("éèêëàâ", 2), "éè …[+4]");
     }
 
     #[test]
@@ -119,12 +104,15 @@ mod tests {
     }
 
     #[test]
-    fn tokens_fold_turkish_and_split() {
+    fn tokens_transliterate_and_split() {
         assert_eq!(
-            tokens("Şu İŞ: reprise.toml'ye ekle-2"),
-            ["su", "is", "reprise", "toml", "ye", "ekle", "2"]
+            tokens("Add it to reprise.toml, step-2"),
+            ["add", "it", "to", "reprise", "toml", "step", "2"]
         );
-        assert_eq!(tokens("é café"), ["caf"]);
+        assert_eq!(
+            tokens("Crème brûlée, naïve café"),
+            ["creme", "brulee", "naive", "cafe"]
+        );
     }
 
     #[test]

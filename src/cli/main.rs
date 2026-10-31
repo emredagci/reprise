@@ -201,6 +201,9 @@ enum Command {
     /// with `--yes`. The source is never changed and existing files are never overwritten.
     Import {
         source: PathBuf,
+        /// A TOML file naming what the source's headings and session `source:` values become.
+        #[arg(long)]
+        map: Option<PathBuf>,
         #[arg(long)]
         yes: bool,
         /// Also list every file.
@@ -427,7 +430,7 @@ enum FactAction {
         scope: FactScope,
         key: String,
         value: String,
-        /// When it became true: a date, a month, or words like "yesterday", "geçen hafta".
+        /// When it became true: a date, a month, or words like "yesterday", "last week".
         #[arg(long, default_value = "today")]
         from: String,
         /// For a value that already stopped holding: when it ended. It is written as history.
@@ -481,7 +484,7 @@ enum EventAction {
         project: Option<String>,
         /// What happened.
         what: String,
-        /// When: a date, a month, or words like "yesterday", "3 gün önce", "last week".
+        /// When: a date, a month, or words like "yesterday", "3 days ago", "last week".
         #[arg(long, default_value = "today")]
         when: String,
         /// One word: release, deploy, incident, migration…
@@ -854,12 +857,21 @@ fn main() -> Result<()> {
         Command::Session { action } => session(action, cli.vault),
         Command::Decisions => print_json(&reprise::browse::decisions(&open_vault(cli.vault)?)?),
         Command::Sessions => print_json(&reprise::browse::sessions(&open_vault(cli.vault)?)?),
-        Command::Import { source, yes, list } => {
+        Command::Import {
+            source,
+            map,
+            yes,
+            list,
+        } => {
             let vault = open_vault(cli.vault)?;
+            let map = match map {
+                Some(path) => reprise::import::Mapping::read(&path)?,
+                None => reprise::import::Mapping::default(),
+            };
             let mut plan = if yes {
-                reprise::import::apply(&source, &vault)?
+                reprise::import::apply(&source, &vault, &map)?
             } else {
-                reprise::import::plan(&source, &vault)?
+                reprise::import::plan(&source, &vault, &map)?
             };
             if !list {
                 plan.steps.clear();

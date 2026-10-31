@@ -945,8 +945,8 @@ mod tests {
     #[test]
     fn slugs_are_ascii_and_short() {
         assert_eq!(
-            slugify("Davet linki: e-postayla İŞ çözümü"),
-            "davet-linki-e-postayla-is-cozumu"
+            slugify("Invite link: résumé by e-mail, ÉTÉ"),
+            "invite-link-resume-by-e-mail-ete"
         );
         assert_eq!(slugify("!!!"), "item");
         let long = slugify("one two three four five six seven eight nine ten");

@@ -19,75 +19,16 @@ use crate::{Access, Result, Vault};
 /// Upper bound of the session-start block, in characters.
 pub const SESSION_START_BUDGET: usize = 6000;
 
-/// Words left out of prompt terms, English and Turkish, folded to ASCII like tokens. Sorted.
+/// Characters a prompt term needs; shorter words say too little to match on.
+const MIN_TERM: usize = 4;
+/// Words left out of prompt terms, lowercase ASCII like tokens, none shorter than `MIN_TERM`. Sorted.
 const STOPWORDS: &[&str] = &[
-    "ama",
-    "and",
-    "bana",
-    "ben",
-    "bir",
-    "biz",
-    "bize",
-    "bu",
-    "bunu",
-    "cok",
-    "da",
-    "daha",
-    "de",
-    "diye",
-    "eger",
-    "ekle",
-    "ekleyelim",
-    "for",
-    "from",
-    "gerek",
-    "gibi",
-    "hem",
-    "her",
-    "hic",
-    "icin",
-    "ile",
-    "into",
-    "ise",
-    "kadar",
-    "lazim",
-    "mi",
-    "mu",
-    "nasil",
-    "ne",
-    "neden",
-    "niye",
-    "olan",
-    "oldu",
-    "olsun",
-    "once",
-    "onu",
-    "sana",
-    "sen",
-    "sey",
-    "seyi",
-    "seyler",
-    "simdi",
-    "sonra",
-    "su",
-    "sunu",
-    "that",
-    "the",
-    "this",
-    "tum",
-    "var",
-    "ve",
-    "veya",
-    "what",
-    "when",
-    "where",
-    "which",
-    "with",
-    "ya",
-    "yap",
-    "yapalim",
-    "yaptik",
-    "yok",
+    "about", "after", "again", "also", "because", "been", "before", "being", "could", "does",
+    "doing", "done", "each", "from", "have", "here", "into", "just", "like", "make", "maybe",
+    "more", "need", "only", "other", "over", "please", "really", "should", "some", "still", "such",
+    "than", "that", "them", "then", "there", "these", "they", "thing", "things", "this", "those",
+    "through", "want", "were", "what", "when", "where", "which", "while", "will", "with", "would",
+    "your",
 ];
 
 /// Sessions the transcript distiller runs (in `sweep::distill_dir`) get no hook context.
@@ -507,7 +448,7 @@ pub fn related_records(
     }
     let terms: Vec<String> = tokens(prompt)
         .into_iter()
-        .filter(|t| t.chars().count() >= 4 && STOPWORDS.binary_search(&t.as_str()).is_err())
+        .filter(|t| t.chars().count() >= MIN_TERM && STOPWORDS.binary_search(&t.as_str()).is_err())
         .collect::<BTreeSet<_>>()
         .into_iter()
         .take(12)
@@ -606,6 +547,10 @@ mod tests {
     fn stopwords_are_sorted_ascii() {
         assert!(STOPWORDS.windows(2).all(|w| w[0] < w[1]));
         assert!(STOPWORDS.iter().all(|w| tokens(w) == [*w]));
+        assert!(
+            STOPWORDS.iter().all(|w| w.len() >= MIN_TERM),
+            "a shorter word is dropped anyway"
+        );
     }
 
     #[test]
@@ -883,22 +828,22 @@ mod tests {
         let repo = env.repo("code/api", None);
         env.write(
             "projects/api/items/api-0001-a.md",
-            "---\nid: api-0001\ntitle: Ödeme ekranı çöküyor\nstatus: inbox\naliases: [payment crash]\n---\n",
+            "---\nid: api-0001\ntitle: Checkout screen crashes\nstatus: inbox\naliases: [payment crash]\n---\n",
         );
         let ask = |p: &str| related_records(&env.vault, &Access::auto(), &repo, p).unwrap();
-        let hit = ask("ödeme ekranında yine payment crash var").unwrap();
+        let hit = ask("the checkout screen shows the payment crash again").unwrap();
         assert_eq!(
             hit,
             "Possibly related reprise records (titles only; open them when the history matters):\n\
-             - api-0001 · Ödeme ekranı çöküyor · inbox"
+             - api-0001 · Checkout screen crashes · inbox"
         );
         assert_eq!(
-            ask("ödeme ile ilgili bir şey soracağım"),
+            ask("a question about the checkout flow"),
             None,
             "one term is not enough"
         );
         assert_eq!(
-            ask("/compact ödeme payment crash"),
+            ask("/compact checkout payment crash"),
             None,
             "commands are skipped"
         );
